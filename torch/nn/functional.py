@@ -1417,8 +1417,9 @@ def local_response_norm(input, size, alpha=1e-4, beta=0.75, k=1):
     if dim < 3:
         raise ValueError('Expected 3D or higher dimensionality \
                          input (got {} dimensions)'.format(dim))
-    div = input.mul(input).unsqueeze(1)
+    div = input.mul(input)
     if dim == 3:
+        div = div.unsqueeze(1)
         div = pad(div, (0, 0, size // 2, (size - 1) // 2))
         div = avg_pool2d(div, (size, 1), stride=1).squeeze(1)
     else:

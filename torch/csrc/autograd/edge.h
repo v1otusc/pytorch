@@ -4,17 +4,18 @@
 #include <functional>
 #include <memory>
 
-#include "torch/csrc/utils/hash.h"
+#include <c10/util/hash.h>
 
-namespace torch { namespace autograd {
+namespace torch {
+namespace autograd {
 
-struct Function;
+struct Node;
 
 /// Represents a particular input of a function.
 struct Edge {
   Edge() noexcept : function(nullptr), input_nr(0) {}
 
-  Edge(std::shared_ptr<Function> function_, uint32_t input_nr_) noexcept
+  Edge(std::shared_ptr<Node> function_, uint32_t input_nr_) noexcept
       : function(std::move(function_)), input_nr(input_nr_) {}
 
   /// Convenience method to test if an edge is valid.
@@ -32,12 +33,13 @@ struct Edge {
   }
 
   /// The function this `Edge` points to.
-  std::shared_ptr<Function> function;
+  std::shared_ptr<Node> function;
 
   /// The identifier of a particular input to the function.
   uint32_t input_nr;
 };
-}} // namespace torch::autograd
+} // namespace autograd
+} // namespace torch
 
 // The idiomatic way of enabling use of a custom type as the key of hash
 // containers in C++11. This method removes the requirement of having to pass
@@ -50,7 +52,7 @@ struct hash<torch::autograd::Edge> {
   using argument_type = torch::autograd::Edge;
   using return_type = size_t;
   return_type operator()(const argument_type& edge) const noexcept {
-    return torch::get_hash(edge.function, edge.input_nr);
+    return c10::get_hash(edge.function, edge.input_nr);
   }
 };
 } // namespace std

@@ -1,121 +1,130 @@
-import functools
-import types
+"""ONNX exporter."""
 
-import torch._C as _C
+from torch import _C
+from torch._C import _onnx as _C_onnx
+from torch._C._onnx import (
+    _CAFFE2_ATEN_FALLBACK,
+    OperatorExportTypes,
+    TensorProtoDataType,
+    TrainingMode,
+)
 
-TensorProtoDataType = _C._onnx.TensorProtoDataType
-OperatorExportTypes = _C._onnx.OperatorExportTypes
-PYTORCH_ONNX_CAFFE2_BUNDLE = _C._onnx.PYTORCH_ONNX_CAFFE2_BUNDLE
+from . import (  # usort:skip. Keep the order instead of sorting lexicographically
+    _deprecation,
+    errors,
+    symbolic_caffe2,
+    symbolic_helper,
+    symbolic_opset7,
+    symbolic_opset8,
+    symbolic_opset9,
+    symbolic_opset10,
+    symbolic_opset11,
+    symbolic_opset12,
+    symbolic_opset13,
+    symbolic_opset14,
+    symbolic_opset15,
+    symbolic_opset16,
+    symbolic_opset17,
+    utils,
+)
 
-ONNX_ARCHIVE_MODEL_PROTO_NAME = "__MODEL_PROTO"
+# TODO(After 1.13 release): Remove the deprecated SymbolicContext
+from ._exporter_states import ExportTypes, SymbolicContext
+from ._type_utils import JitScalarType
+from .errors import CheckerError  # Backwards compatibility
+from .utils import (
+    _optimize_graph,
+    _run_symbolic_function,
+    _run_symbolic_method,
+    export,
+    export_to_pretty_string,
+    is_in_onnx_export,
+    register_custom_op_symbolic,
+    select_model_mode_for_export,
+    unregister_custom_op_symbolic,
+)
+
+__all__ = [
+    # Modules
+    "symbolic_helper",
+    "utils",
+    "errors",
+    # All opsets
+    "symbolic_caffe2",
+    "symbolic_opset7",
+    "symbolic_opset8",
+    "symbolic_opset9",
+    "symbolic_opset10",
+    "symbolic_opset11",
+    "symbolic_opset12",
+    "symbolic_opset13",
+    "symbolic_opset14",
+    "symbolic_opset15",
+    "symbolic_opset16",
+    "symbolic_opset17",
+    # Enums
+    "ExportTypes",
+    "OperatorExportTypes",
+    "TrainingMode",
+    "TensorProtoDataType",
+    "JitScalarType",
+    # Public functions
+    "export",
+    "export_to_pretty_string",
+    "is_in_onnx_export",
+    "select_model_mode_for_export",
+    "register_custom_op_symbolic",
+    "unregister_custom_op_symbolic",
+    "disable_log",
+    "enable_log",
+    # Errors
+    "CheckerError",  # Backwards compatibility
+]
+
+# Set namespace for exposed private names
+ExportTypes.__module__ = "torch.onnx"
+JitScalarType.__module__ = "torch.onnx"
+
+producer_name = "pytorch"
+producer_version = _C_onnx.PRODUCER_VERSION
 
 
-class ExportTypes:
-    PROTOBUF_FILE = 1
-    ZIP_ARCHIVE = 2
-    COMPRESSED_ZIP_ARCHIVE = 3
-    DIRECTORY = 4
-
-
+@_deprecation.deprecated(
+    since="1.12.0", removed_in="1.14", instructions="use `torch.onnx.export` instead"
+)
 def _export(*args, **kwargs):
-    from torch.onnx import utils
     return utils._export(*args, **kwargs)
 
 
-def export(*args, **kwargs):
-    from torch.onnx import utils
-    return utils.export(*args, **kwargs)
+# TODO(justinchuby): Deprecate these logging functions in favor of the new diagnostic module.
+
+# Returns True iff ONNX logging is turned on.
+is_onnx_log_enabled = _C._jit_is_onnx_log_enabled
 
 
-def export_to_pretty_string(*args, **kwargs):
-    from torch.onnx import utils
-    return utils.export_to_pretty_string(*args, **kwargs)
+def enable_log() -> None:
+    r"""Enables ONNX logging."""
+    _C._jit_set_onnx_log_enabled(True)
 
 
-def _export_to_pretty_string(*args, **kwargs):
-    from torch.onnx import utils
-    return utils._export_to_pretty_string(*args, **kwargs)
+def disable_log() -> None:
+    r"""Disables ONNX logging."""
+    _C._jit_set_onnx_log_enabled(False)
 
 
-def _optimize_trace(trace, operator_export_type):
-    from torch.onnx import utils
-    trace.set_graph(utils._optimize_graph(trace.graph(), operator_export_type))
+"""Sets output stream for ONNX logging.
+
+Args:
+    stream_name (str, default "stdout"): Only 'stdout' and 'stderr' are supported
+        as ``stream_name``.
+"""
+set_log_stream = _C._jit_set_onnx_log_output_stream
 
 
-def set_training(*args, **kwargs):
-    from torch.onnx import utils
-    return utils.set_training(*args, **kwargs)
+"""A simple logging facility for ONNX exporter.
 
-
-def _run_symbolic_function(*args, **kwargs):
-    from torch.onnx import utils
-    return utils._run_symbolic_function(*args, **kwargs)
-
-
-def _run_symbolic_method(*args, **kwargs):
-    from torch.onnx import utils
-    return utils._run_symbolic_method(*args, **kwargs)
-
-
-def symbolic_override(symbolic_fn):
-    r"""
-    Decorator to override ONNX export of the a function with specified subgraph.
-
-    Effectively allows to attach symbolic() implementation to an arbitrary
-    python function or autograd.Function. Requirements for the decorated
-    function:
-     - being non-member function or autograd.Function
-     - positional inputs are Tensors or (nested) lists or tuples of
-       them (similar requirement to NestedIOFunction)
-     - outputs are similarly Tensors or (nested) lists or tuples of them
-     - non-tensor typed values should be keyword arguments both in definition
-       and when called
-
-    Example usage:
-
-    ```
-    def symb(g, x, y):
-        return g.op('Sum', x, y[0], y[1])
-
-    @symbolic_override(symb)
-    def foo(x, y):
-        return x + y[0] + y[1]
-    ```
-    """
-    def decorator(fn):
-        import torch
-        from torch.autograd import function
-
-        def wrapper(*args, **kwargs):
-            tstate = torch._C._get_tracing_state()
-            if not tstate:
-                return fn(*args, **kwargs)
-
-            flat_args = tuple(function._iter_tensors_permissive(args))
-            arg_values = [torch._C._get_value_trace(x) if isinstance(x, torch.Tensor) else x for x in flat_args]
-
-            # This must come after the calls to get_value_trace, lest we
-            # lose information due to in-place operations.
-
-            # temporarily disable tracing so that we don't cause errors
-            # for things inside of fn that may not be tracable
-            with torch.jit._disable_tracing():
-                output_vars = fn(*args, **kwargs)
-
-            symbolic_args = function._unflatten(arg_values, args)
-            output_vals = symbolic_fn(tstate.graph(), *symbolic_args, **kwargs)
-
-            for var, val in zip(
-                    function._iter_tensors(output_vars),
-                    function._iter_jit_values(output_vals)):
-                val.inferTypeFrom(var.data)
-                torch._C._set_value_trace(var, val)
-
-            return output_vars
-
-        # fn might be autograd.Function too, in this case wrapping doesn't work
-        if isinstance(fn, types.FunctionType):
-            wrapper = functools.wraps(fn)(wrapper)
-
-        return wrapper
-    return decorator
+Args:
+    args: Arguments are converted to string, concatenated together with a newline
+        character appended to the end, and flushed to output stream.
+"""
+log = _C._jit_onnx_log

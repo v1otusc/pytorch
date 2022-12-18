@@ -2,6 +2,7 @@
 
 #include "caffe2/core/context_gpu.h"
 #include "caffe2/operators/one_hot_ops.h"
+#include "caffe2/utils/cub_namespace.cuh"
 
 namespace caffe2 {
 
@@ -22,13 +23,14 @@ void OneHotOp<CUDAContext>::DoOneHotOp(
     const Tensor& indices,
     Tensor* output) {
   float* output_ptr = output->template mutable_data<float>();
-  math::Set<float, CUDAContext>(output->size(), 0., output_ptr, &context_);
+  math::Set<float, CUDAContext>(output->numel(), 0., output_ptr, &context_);
   OneHotOpKernel<<<
       CAFFE_GET_BLOCKS(batch_size),
       CAFFE_CUDA_NUM_THREADS,
       0,
       context_.cuda_stream()>>>(
       batch_size, index_size, indices.data<int64_t>(), output_ptr);
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
 REGISTER_CUDA_OPERATOR(OneHot, OneHotOp<CUDAContext>);

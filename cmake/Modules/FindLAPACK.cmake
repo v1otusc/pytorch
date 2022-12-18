@@ -50,12 +50,12 @@ macro(Check_Lapack_Libraries LIBRARIES _prefix _name _flags _list _blas)
         if(APPLE)
           find_library(${_prefix}_${_library}_LIBRARY
             NAMES ${_library}
-            PATHS /usr/local/lib /usr/lib /usr/local/lib64 /usr/lib64
+            PATHS /usr/local/lib /usr/lib /usr/local/lib64 /usr/lib64 /usr/lib/aarch64-linux-gnu
             ENV DYLD_LIBRARY_PATH)
         else(APPLE)
           find_library(${_prefix}_${_library}_LIBRARY
             NAMES ${_library}
-            PATHS /usr/local/lib /usr/lib /usr/local/lib64 /usr/lib64
+            PATHS /usr/local/lib /usr/lib /usr/local/lib64 /usr/lib64 /usr/lib/aarch64-linux-gnu
             ENV LD_LIBRARY_PATH)
         endif(APPLE)
       endif(WIN32)
@@ -119,10 +119,40 @@ if(BLAS_FOUND)
     endif()
   endif()
 
+  # FlexiBLAS
+  IF((NOT LAPACK_INFO) AND (BLAS_INFO STREQUAL "flexi"))
+    SET(CMAKE_REQUIRED_LIBRARIES ${BLAS_LIBRARIES})
+    check_function_exists("cheev_" FLEXIBLAS_LAPACK_WORKS)
+    set(CMAKE_REQUIRED_LIBRARIES)
+    if(FLEXIBLAS_LAPACK_WORKS)
+      SET(LAPACK_INFO "flexi")
+    else()
+      message(STATUS "Strangely, this FlexiBLAS library does not support Lapack?!")
+    endif()
+  endif()
+
   # OpenBlas
   IF((NOT LAPACK_INFO) AND (BLAS_INFO STREQUAL "open"))
     SET(CMAKE_REQUIRED_LIBRARIES ${BLAS_LIBRARIES})
     check_function_exists("cheev_" OPEN_LAPACK_WORKS)
+    if(OPEN_LAPACK_WORKS)
+      check_function_exists("cgesdd_" LAPACK_CGESDD_WORKS)
+      if(NOT LAPACK_CGESDD_WORKS)
+        find_library(GFORTRAN_LIBRARY
+          NAMES libgfortran.a gfortran
+          PATHS ${CMAKE_C_IMPLICIT_LINK_DIRECTORIES})
+       list(APPEND CMAKE_REQUIRED_LIBRARIES "${GFORTRAN_LIBRARY}")
+       unset(LAPACK_CGESDD_WORKS CACHE)
+       check_function_exists("cgesdd_" LAPACK_CGESDD_WORKS)
+       if(LAPACK_CGESDD_WORKS)
+         list(APPEND LAPACK_LIBRARIES "${GFORTRAN_LIBRARY}")
+       else()
+         message(WARNING "OpenBlas has been compiled with Lapack support, but cgesdd can not be used")
+         set(OPEN_LAPACK_WORKS NO)
+       endif()
+      endif()
+    endif()
+
     set(CMAKE_REQUIRED_LIBRARIES)
     if(OPEN_LAPACK_WORKS)
       SET(LAPACK_INFO "open")
@@ -141,6 +171,21 @@ if(BLAS_FOUND)
     else()
       message(STATUS "It seems GotoBlas has not been compiled with Lapack support")
     endif()
+  endif()
+
+  # FLAME
+  IF((NOT LAPACK_INFO) AND (BLAS_INFO STREQUAL "FLAME"))
+    check_lapack_libraries(
+      LAPACK_LIBRARIES
+      LAPACK
+      cheev
+      ""
+      "flame"
+      "${BLAS_LIBRARIES}"
+      )
+    if(LAPACK_LIBRARIES)
+      SET(LAPACK_INFO "FLAME")
+    endif(LAPACK_LIBRARIES)
   endif()
 
   # ACML
@@ -185,7 +230,7 @@ IF (NOT LAPACK_FOUND AND LAPACK_FIND_REQUIRED)
 ENDIF (NOT LAPACK_FOUND AND LAPACK_FIND_REQUIRED)
 IF(NOT LAPACK_FIND_QUIETLY)
   IF(LAPACK_FOUND)
-    MESSAGE(STATUS "Found a library with LAPACK API. (${LAPACK_INFO})")
+    MESSAGE(STATUS "Found a library with LAPACK API (${LAPACK_INFO}).")
   ELSE(LAPACK_FOUND)
     MESSAGE(STATUS "Cannot find a library with LAPACK API. Not using LAPACK.")
   ENDIF(LAPACK_FOUND)

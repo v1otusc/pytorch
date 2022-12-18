@@ -1,5 +1,4 @@
 import math
-from numbers import Number
 
 import torch
 from torch._six import inf, nan
@@ -7,19 +6,24 @@ from torch.distributions import Chi2, constraints
 from torch.distributions.distribution import Distribution
 from torch.distributions.utils import _standard_normal, broadcast_all
 
+__all__ = ['StudentT']
 
 class StudentT(Distribution):
     r"""
-    Creates a Student's t-distribution parameterized by :attr:`df`.
+    Creates a Student's t-distribution parameterized by degree of
+    freedom :attr:`df`, mean :attr:`loc` and scale :attr:`scale`.
 
     Example::
 
+        >>> # xdoctest: +IGNORE_WANT("non-deterinistic")
         >>> m = StudentT(torch.tensor([2.0]))
         >>> m.sample()  # Student's t-distributed with degrees of freedom=2
         tensor([ 0.1046])
 
     Args:
         df (float or Tensor): degrees of freedom
+        loc (float or Tensor): mean of the distribution
+        scale (float or Tensor): scale of the distribution
     """
     arg_constraints = {'df': constraints.positive, 'loc': constraints.real, 'scale': constraints.positive}
     support = constraints.real
@@ -27,13 +31,17 @@ class StudentT(Distribution):
 
     @property
     def mean(self):
-        m = self.loc.clone()
+        m = self.loc.clone(memory_format=torch.contiguous_format)
         m[self.df <= 1] = nan
         return m
 
     @property
+    def mode(self):
+        return self.loc
+
+    @property
     def variance(self):
-        m = self.df.clone()
+        m = self.df.clone(memory_format=torch.contiguous_format)
         m[self.df > 2] = self.scale[self.df > 2].pow(2) * self.df[self.df > 2] / (self.df[self.df > 2] - 2)
         m[(self.df <= 2) & (self.df > 1)] = inf
         m[self.df <= 1] = nan

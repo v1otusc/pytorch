@@ -10,8 +10,7 @@ OpSchema::Cost CostInferenceForSparseLengths(
   CAFFE_ENFORCE_GE(
       inputs.size(),
       min_num_of_inputs,
-      def.type() + " requires at least " +
-          caffe2::to_string(min_num_of_inputs));
+      def.type() + " requires at least " + c10::to_string(min_num_of_inputs));
 
   const TensorShape data = inputs[0];
   const TensorShape indices = inputs[1 + use_weight];
@@ -403,10 +402,12 @@ constexpr bool equal(
   REGISTER_SEGMENT_DEF_SCHEMA_GRADIENT_ONLY(                                 \
       segment_name, gradient_name, __VA_ARGS__)
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,clang-diagnostic-unused-function)
 REGISTER_SEGMENT_DEF(
     SortedSegmentRangeSum,
     SortedSegmentRangeSumGradient,
     AbstractSortedSegmentRangeDef<float, int, CPUContext, SumRangeReducerDef>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,clang-diagnostic-unused-function)
 REGISTER_SEGMENT_DEF(
     SortedSegmentRangeLogSumExp,
     SortedSegmentRangeLogSumExpGradient,
@@ -415,6 +416,7 @@ REGISTER_SEGMENT_DEF(
         int,
         CPUContext,
         LogSumExpRangeReducerDef>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,clang-diagnostic-unused-function)
 REGISTER_SEGMENT_DEF(
     SortedSegmentRangeLogMeanExp,
     SortedSegmentRangeLogMeanExpGradient,
@@ -423,67 +425,82 @@ REGISTER_SEGMENT_DEF(
         int,
         CPUContext,
         LogMeanExpRangeReducerDef>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,clang-diagnostic-unused-function)
 REGISTER_SEGMENT_DEF(
     SortedSegmentRangeMean,
     SortedSegmentRangeMeanGradient,
     AbstractSortedSegmentRangeDef<float, int, CPUContext, MeanRangeReducerDef>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,clang-diagnostic-unused-function)
 REGISTER_SEGMENT_DEF(
     SortedSegmentRangeMax,
     SortedSegmentRangeMaxGradient,
     AbstractSortedSegmentRangeDef<float, int, CPUContext, MaxRangeReducerDef>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,clang-diagnostic-unused-function)
 REGISTER_SEGMENT_DEF(
     SortedSegmentSum,
     SortedSegmentSumGradient,
     AbstractSortedSegmentDef<float, int, CPUContext, SumReducerDef>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,clang-diagnostic-unused-function)
 REGISTER_SEGMENT_DEF(
     SparseSortedSegmentSum,
     SparseSortedSegmentSumGradient,
     AbstractSparseSortedSegmentDef<float, int, CPUContext, SumReducerDef>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,clang-diagnostic-unused-function)
 REGISTER_SEGMENT_DEF(
     UnsortedSegmentSum,
     UnsortedSegmentSumGradient,
     AbstractUnsortedSegmentDef<float, int, CPUContext, SumReducerDef>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,clang-diagnostic-unused-function)
 REGISTER_SEGMENT_DEF(
     SparseUnsortedSegmentSum,
     SparseUnsortedSegmentSumGradient,
     AbstractSparseUnsortedSegmentDef<float, int, CPUContext, SumReducerDef>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,clang-diagnostic-unused-function)
 REGISTER_SEGMENT_DEF(
     LengthsSum,
     LengthsSumGradient,
     AbstractLengthsDef<float, int, CPUContext, SumReducerDef, true>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,clang-diagnostic-unused-function)
 REGISTER_SEGMENT_DEF(
     SortedSegmentMean,
     SortedSegmentMeanGradient,
     AbstractSortedSegmentDef<float, int, CPUContext, MeanReducerDef>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,clang-diagnostic-unused-function)
 REGISTER_SEGMENT_DEF(
     SparseSortedSegmentMean,
     SparseSortedSegmentMeanGradient,
     AbstractSparseSortedSegmentDef<float, int, CPUContext, MeanReducerDef>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,clang-diagnostic-unused-function)
 REGISTER_SEGMENT_DEF(
     UnsortedSegmentMean,
     UnsortedSegmentMeanGradient,
     AbstractUnsortedSegmentDef<float, int, CPUContext, MeanReducerDef>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,clang-diagnostic-unused-function)
 REGISTER_SEGMENT_DEF(
     SparseUnsortedSegmentMean,
     SparseUnsortedSegmentMeanGradient,
     AbstractSparseUnsortedSegmentDef<float, int, CPUContext, MeanReducerDef>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,clang-diagnostic-unused-function)
 REGISTER_SEGMENT_DEF(
     LengthsMean,
     LengthsMeanGradient,
     AbstractLengthsDef<float, int, CPUContext, MeanReducerDef, true>);
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,clang-diagnostic-unused-function)
 REGISTER_SEGMENT_DEF(
     ReduceFrontWeightedSum,
     ReduceFrontWeightedSumGradient,
     AbstractReduceFrontDef<float, CPUContext, WeightedSumReducerDef>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,clang-diagnostic-unused-function)
 REGISTER_SEGMENT_DEF(
     SortedSegmentWeightedSum,
     SortedSegmentWeightedSumGradient,
     AbstractSortedSegmentDef<float, int, CPUContext, WeightedSumReducerDef>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,clang-diagnostic-unused-function)
 REGISTER_SEGMENT_DEF(
     SparseSortedSegmentWeightedSum,
     SparseSortedSegmentWeightedSumGradient,
@@ -492,10 +509,12 @@ REGISTER_SEGMENT_DEF(
         int,
         CPUContext,
         WeightedSumReducerDef>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,clang-diagnostic-unused-function)
 REGISTER_SEGMENT_DEF(
     UnsortedSegmentWeightedSum,
     UnsortedSegmentWeightedSumGradient,
     AbstractUnsortedSegmentDef<float, int, CPUContext, WeightedSumReducerDef>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,clang-diagnostic-unused-function)
 REGISTER_SEGMENT_DEF(
     SparseUnsortedSegmentWeightedSum,
     SparseUnsortedSegmentWeightedSumGradient,
@@ -504,6 +523,7 @@ REGISTER_SEGMENT_DEF(
         int,
         CPUContext,
         WeightedSumReducerDef>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,clang-diagnostic-unused-function)
 REGISTER_SEGMENT_DEF(
     LengthsWeightedSum,
     LengthsWeightedSumGradient,
@@ -524,9 +544,11 @@ REGISTER_SEGMENT_DEF(
       .NumInputs(__VA_ARGS__::WithMainInputBackwardOp::kNumInputs)   \
       .NumOutputs(1, INT_MAX)
 
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,clang-diagnostic-unused-function)
 REGISTER_GRADIENT_WITH_MAIN_INPUT(
     LengthsWeightedSumWithMainInputGradient,
     AbstractLengthsDef<float, int, CPUContext, WeightedSumReducerDef>);
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables,clang-diagnostic-unused-function)
 REGISTER_GRADIENT_WITH_MAIN_INPUT(
     SparseLengthsWeightedSumWithMainInputGradient,
     AbstractSparseLengthsDef<float, int, CPUContext, WeightedSumReducerDef>);
@@ -580,3 +602,36 @@ REGISTER_LENGTHS_OPS_MAIN_INPUT_AND_FORWARD_OUTPUT_GRADIENT(
     LengthsMaxWithMainInputAndForwardOutputGradient,
     AbstractLengthsDef<float, int, CPUContext, MaxReducerDef>);
 } // namespace caffe2
+
+// Macro doesn't like comma
+using LengthsSumCPUOp = caffe2::AbstractLengthsDef<
+    float,
+    int,
+    caffe2::CPUContext,
+    caffe2::SumReducerDef,
+    true>::ForwardOp;
+using LengthsMeanCPUOp = caffe2::AbstractLengthsDef<
+    float,
+    int,
+    caffe2::CPUContext,
+    caffe2::MeanReducerDef,
+    true>::ForwardOp;
+using LengthsMaxCPUOp = caffe2::AbstractLengthsDef<
+    float,
+    int,
+    caffe2::CPUContext,
+    caffe2::MaxReducerDef,
+    true>::ForwardOp;
+
+C10_EXPORT_CAFFE2_OP_TO_C10_CPU(
+    LengthsSum,
+    "_caffe2::LengthsSum(Tensor data, Tensor lengths) -> Tensor",
+    LengthsSumCPUOp);
+C10_EXPORT_CAFFE2_OP_TO_C10_CPU(
+    LengthsMean,
+    "_caffe2::LengthsMean(Tensor data, Tensor lengths) -> Tensor",
+    LengthsMeanCPUOp);
+C10_EXPORT_CAFFE2_OP_TO_C10_CPU(
+    LengthsMax,
+    "_caffe2::LengthsMax(Tensor data, Tensor lengths) -> Tensor",
+    LengthsMaxCPUOp);

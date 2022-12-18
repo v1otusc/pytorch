@@ -64,6 +64,7 @@
 #include "caffe2/core/context_gpu.h"
 #include "caffe2/operators/deform_conv_op.h"
 #include "caffe2/operators/deform_conv_op_impl.h"
+#include "caffe2/utils/GpuAtomics.cuh"
 
 namespace caffe2 {
 
@@ -304,10 +305,10 @@ template <typename DType, typename Context>
 void DeformConvOpBase<DType, Context>::DeformableIm2col(
     const DType* data_im,
     const DType* data_offset,
-    at::IntList im_shape,
-    at::IntList col_shape,
+    at::IntArrayRef im_shape,
+    at::IntArrayRef col_shape,
     DType* data_col) {
-  CHECK_LT(2, CAFFE_CUDA_NUM_THREADS);
+  TORCH_CHECK_LT(2, CAFFE_CUDA_NUM_THREADS);
   CAFFE_ENFORCE_EQ(pad_t(), pad_b());
   CAFFE_ENFORCE_EQ(pad_l(), pad_r());
   const int pad_h = pad_t();
@@ -336,6 +337,7 @@ void DeformConvOpBase<DType, Context>::DeformableIm2col(
           col_shape[1],
           col_shape[2],
           data_col);
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
 /*!
@@ -394,8 +396,9 @@ __global__ void deformable_col2im_gpu_kernel(
     for (int dy = -2; dy <= 2; dy++) {
       for (int dx = -2; dx <= 2; dx++) {
         if (cur_h + dy >= 0 && cur_h + dy < height && cur_w + dx >= 0 &&
-            cur_w + dx < width && abs(cur_inv_h_data - (cur_h + dy)) < 1 &&
-            abs(cur_inv_w_data - (cur_w + dx)) < 1) {
+            cur_w + dx < width &&
+            c10::cuda::compat::abs(cur_inv_h_data - (cur_h + dy)) < 1 &&
+            c10::cuda::compat::abs(cur_inv_w_data - (cur_w + dx)) < 1) {
           int cur_bottom_grad_pos =
               (c * height + cur_h + dy) * width + cur_w + dx;
           DType weight = get_gradient_weight(
@@ -405,7 +408,7 @@ __global__ void deformable_col2im_gpu_kernel(
               cur_w + dx,
               height,
               width);
-          atomicAdd(grad_im + cur_bottom_grad_pos, weight * cur_top_grad);
+          gpu_atomic_add(grad_im + cur_bottom_grad_pos, weight * cur_top_grad);
         }
       }
     }
@@ -430,8 +433,8 @@ template <typename DType, typename Context>
 void DeformConvOpBase<DType, Context>::DeformableCol2im(
     const DType* data_col,
     const DType* data_offset,
-    at::IntList im_shape,
-    at::IntList col_shape,
+    at::IntArrayRef im_shape,
+    at::IntArrayRef col_shape,
     DType* grad_im) {
   CAFFE_ENFORCE_EQ(pad_t(), pad_b());
   CAFFE_ENFORCE_EQ(pad_l(), pad_r());
@@ -441,7 +444,7 @@ void DeformConvOpBase<DType, Context>::DeformableCol2im(
   index_t channel_per_deformable_group = im_shape[1] / deformable_group_;
   index_t num_kernels = size_from_dim_(0, col_shape);
   // num_axes should be smaller than block size
-  CHECK_LT(2, CAFFE_CUDA_NUM_THREADS);
+  TORCH_CHECK_LT(2, CAFFE_CUDA_NUM_THREADS);
   // To avoid involving atomic operations, we will launch one kernel per
   // bottom dimension, and then in the kernel add up the top dimensions.
   // NOLINT_NEXT_LINE(whitespace/operators)
@@ -468,6 +471,7 @@ void DeformConvOpBase<DType, Context>::DeformableCol2im(
           col_shape[1],
           col_shape[2],
           grad_im);
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
 /*!
@@ -577,8 +581,8 @@ void DeformConvOpBase<DType, Context>::DeformableCol2imCoord(
     const DType* data_col,
     const DType* data_im,
     const DType* data_offset,
-    at::IntList im_shape,
-    at::IntList col_shape,
+    at::IntArrayRef im_shape,
+    at::IntArrayRef col_shape,
     DType* grad_offset) {
   CAFFE_ENFORCE_EQ(pad_t(), pad_b());
   CAFFE_ENFORCE_EQ(pad_l(), pad_r());
@@ -588,7 +592,7 @@ void DeformConvOpBase<DType, Context>::DeformableCol2imCoord(
       kernel_w() * deformable_group_;
   index_t channel_per_deformable_group = col_shape[0] / deformable_group_;
   // num_axes should be smaller than block size
-  CHECK_LT(2, CAFFE_CUDA_NUM_THREADS);
+  TORCH_CHECK_LT(2, CAFFE_CUDA_NUM_THREADS);
   // To avoid involving atomic operations, we will launch one kernel per
   // bottom dimension, and then in the kernel add up the top dimensions.
   // NOLINT_NEXT_LINE(whitespace/operators)
@@ -616,6 +620,7 @@ void DeformConvOpBase<DType, Context>::DeformableCol2imCoord(
           col_shape[1],
           col_shape[2],
           grad_offset);
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
 REGISTER_CUDA_OPERATOR(DeformConv, DeformConvOp<float, CUDAContext>);

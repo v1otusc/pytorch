@@ -15,11 +15,12 @@ template <typename T>
 class EigenConvOp final : public ConvPoolOpBase<CPUContext> {
  public:
   USE_CONV_POOL_BASE_FUNCTIONS(CPUContext);
-  EigenConvOp(const OperatorDef& operator_def, Workspace* ws)
+  explicit EigenConvOp(const OperatorDef& operator_def, Workspace* ws)
       : ConvPoolOpBase<CPUContext>(operator_def, ws) {
     OPERATOR_NEEDS_FEATURE(group_ == 1, "Group convolution not supported yet.");
   }
-  ~EigenConvOp() {}
+  // NOLINTNEXTLINE(modernize-use-equals-default)
+  ~EigenConvOp() override {}
 
   bool RunOnDeviceWithOrderNCHW() override;
   bool RunOnDeviceWithOrderNHWC() override;
@@ -36,7 +37,7 @@ bool EigenConvOp<T>::RunOnDeviceWithOrderNCHW() {
   auto& filter = Input(FILTER);
   auto* Y = Output(0);
   const int N = X.dim32(0), C = X.dim32(1), H = X.dim32(2), W = X.dim32(3);
-  CAFFE_ENFORCE(4 == filter.ndim());
+  CAFFE_ENFORCE(4 == filter.dim());
   const int M = filter.dim32(0);
   CAFFE_ENFORCE(filter.dim32(1) == C);
   CAFFE_ENFORCE(filter.dim32(2) == kernel_h());
@@ -49,6 +50,7 @@ bool EigenConvOp<T>::RunOnDeviceWithOrderNCHW() {
 
   Eigen::Tensor<T, 4, Eigen::RowMajor> filter_tensor =
       Eigen::TensorMap<Eigen::Tensor<T, 4, Eigen::RowMajor>>(
+          // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
           const_cast<T*>(filter.template data<T>()),
           M,
           C,
@@ -57,6 +59,7 @@ bool EigenConvOp<T>::RunOnDeviceWithOrderNCHW() {
           .shuffle(kernel_shuffles);
   Eigen::Tensor<T, 4, Eigen::RowMajor> X_tensor =
       Eigen::TensorMap<Eigen::Tensor<T, 4, Eigen::RowMajor>>(
+          // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
           const_cast<T*>(X.template data<T>()), N, C, H, W)
           .shuffle(input_shuffles);
 
@@ -70,7 +73,7 @@ bool EigenConvOp<T>::RunOnDeviceWithOrderNCHW() {
 
   Eigen::DSizes<TensorIndex, 2> pre_contract_dims;
   pre_contract_dims[1] = kernel_h() * kernel_w() * C;
-  pre_contract_dims[0] = Y->size() / M;
+  pre_contract_dims[0] = Y->numel() / M;
 
   Eigen::DSizes<TensorIndex, 2> kernel_dims;
   kernel_dims[0] = kernel_h() * kernel_w() * C;
@@ -104,12 +107,12 @@ bool EigenConvOp<T>::RunOnDeviceWithOrderNCHW() {
                  .reshape(Y_tensor.dimensions());
   if (InputSize() == 3) {
     auto& bias = Input(BIAS);
-    CAFFE_ENFORCE(1 == bias.ndim());
+    CAFFE_ENFORCE(1 == bias.dim());
     CAFFE_ENFORCE(bias.dim32(0) == M);
     // It seems that the bias broadcast is still slower so let's do the
     // following for now.
     EigenArrayMap<T> Y_arr(
-        Y_tensor.data(), static_cast<int64_t>(M), Y->size() / M);
+        Y_tensor.data(), static_cast<int64_t>(M), Y->numel() / M);
     ConstEigenVectorArrayMap<T> bias_arr(bias.template data<T>(), M);
     Y_arr = Y_arr.colwise() + bias_arr;
   }
@@ -130,7 +133,7 @@ bool EigenConvOp<T>::RunOnDeviceWithOrderNHWC() {
   auto& filter = Input(FILTER);
   auto* Y = Output(0);
   const int N = X.dim32(0), H = X.dim32(1), W = X.dim32(2), C = X.dim32(3);
-  CAFFE_ENFORCE(4 == filter.ndim());
+  CAFFE_ENFORCE(4 == filter.dim());
   const int M = filter.dim32(0);
   CAFFE_ENFORCE(filter.dim32(1) == kernel_h());
   CAFFE_ENFORCE(filter.dim32(2) == kernel_w());
@@ -148,10 +151,12 @@ bool EigenConvOp<T>::RunOnDeviceWithOrderNHWC() {
   // TODO(jiayq): right now we const cast away the const pointer, but we will
   // need to figure out how to properly do a const tensormap.
   Eigen::TensorMap<Eigen::Tensor<T, 4, Eigen::RowMajor>> X_tensor(
+      // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
       const_cast<T*>(X.template data<T>()), N, H, W, C);
   Eigen::TensorMap<Eigen::Tensor<T, 4, Eigen::RowMajor>> Y_tensor(
       Y->template mutable_data<T>(), N, Y->dim32(1), Y->dim32(2), M);
   Eigen::TensorMap<Eigen::Tensor<T, 4, Eigen::RowMajor>> filter_tensor(
+      // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
       const_cast<T*>(temp_filter.data()), kernel_h(), kernel_w(), C, M);
 
   // For Eigen, the definition of row and col actually correspond to width
@@ -164,7 +169,7 @@ bool EigenConvOp<T>::RunOnDeviceWithOrderNHWC() {
 
   Eigen::DSizes<TensorIndex, 2> pre_contract_dims;
   pre_contract_dims[1] = kernel_h() * kernel_w() * C;
-  pre_contract_dims[0] = Y->size() / M;
+  pre_contract_dims[0] = Y->numel() / M;
 
   Eigen::DSizes<TensorIndex, 2> kernel_dims;
   kernel_dims[0] = kernel_h() * kernel_w() * C;
@@ -197,14 +202,15 @@ bool EigenConvOp<T>::RunOnDeviceWithOrderNHWC() {
 
   if (InputSize() == 3) {
     auto& bias = Input(BIAS);
-    CAFFE_ENFORCE(1 == bias.ndim());
+    CAFFE_ENFORCE(1 == bias.dim());
     CAFFE_ENFORCE(bias.dim32(0) == M);
     Eigen::TensorMap<Eigen::Tensor<T, 4, Eigen::RowMajor>> bias_tensor(
+        // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
         const_cast<T*>(bias.template data<T>()), 1, 1, 1, M);
     // It seems that the bias broadcast is still slower so let's do the
     // following for now.
     EigenArrayMap<T> Y_arr(
-        Y->template mutable_data<T>(), static_cast<int64_t>(M), Y->size() / M);
+        Y->template mutable_data<T>(), static_cast<int64_t>(M), Y->numel() / M);
     ConstEigenVectorArrayMap<T> bias_arr(bias.template data<T>(), M);
     Y_arr = Y_arr.colwise() + bias_arr;
   }

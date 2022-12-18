@@ -1,4 +1,5 @@
 import math
+from numbers import Real
 from numbers import Number
 
 import torch
@@ -6,6 +7,7 @@ from torch.distributions import constraints
 from torch.distributions.exp_family import ExponentialFamily
 from torch.distributions.utils import _standard_normal, broadcast_all
 
+__all__ = ['Normal']
 
 class Normal(ExponentialFamily):
     r"""
@@ -14,6 +16,7 @@ class Normal(ExponentialFamily):
 
     Example::
 
+        >>> # xdoctest: +IGNORE_WANT("non-deterinistic")
         >>> m = Normal(torch.tensor([0.0]), torch.tensor([1.0]))
         >>> m.sample()  # normally distributed with loc=0 and scale=1
         tensor([ 0.1046])
@@ -30,6 +33,10 @@ class Normal(ExponentialFamily):
 
     @property
     def mean(self):
+        return self.loc
+
+    @property
+    def mode(self):
         return self.loc
 
     @property
@@ -72,7 +79,7 @@ class Normal(ExponentialFamily):
             self._validate_sample(value)
         # compute the variance
         var = (self.scale ** 2)
-        log_scale = math.log(self.scale) if isinstance(self.scale, Number) else self.scale.log()
+        log_scale = math.log(self.scale) if isinstance(self.scale, Real) else self.scale.log()
         return -((value - self.loc) ** 2) / (2 * var) - log_scale - math.log(math.sqrt(2 * math.pi))
 
     def cdf(self, value):
@@ -81,8 +88,6 @@ class Normal(ExponentialFamily):
         return 0.5 * (1 + torch.erf((value - self.loc) * self.scale.reciprocal() / math.sqrt(2)))
 
     def icdf(self, value):
-        if self._validate_args:
-            self._validate_sample(value)
         return self.loc + self.scale * torch.erfinv(2 * value - 1) * math.sqrt(2)
 
     def entropy(self):

@@ -19,7 +19,7 @@ void conv(const ConvArgs& args,
             (X.dim32(1) - KH + args.pad_t + args.pad_b) / args.stride_h + 1,
             (X.dim32(2) - KW + args.pad_l + args.pad_r) / args.stride_w + 1,
             W.dim32(0));
-  CHECK_EQ(W.dim32(3), X.dim32(3));
+  TORCH_CHECK_EQ(W.dim32(3), X.dim32(3));
   const auto OH = Y->dim32(1);
   const auto OW = Y->dim32(2);
   const auto OC = Y->dim32(3);
@@ -155,7 +155,7 @@ inline void gemmNT(int M, int N, int K, const float* A, const float* B, float* C
 }
 
 inline void qgemmNT(int M, int N, int K, const uint8_t* A, const uint8_t* B, float* C) {
-  CHECK_EQ(K % 8, 0);
+  TORCH_CHECK_EQ(K % 8, 0);
   const int QK = K / 8;
   for (auto m = 0; m < M; ++m) {
     for (auto n = 0; n < N; ++n) {
@@ -185,7 +185,7 @@ void gemmTest(int64_t M, int64_t N, int64_t K) {
     Y.Resize(M, N);
     gemmNT(M, N, K, X.data<float>(), W.data<float>(), Y.mutable_data<float>());
   }
-  EXPECT_TRUE(Y.dims() == YQ.dims());
+  EXPECT_TRUE(Y.sizes() == YQ.sizes());
   for (auto i = 0; i < Y.size(); ++i) {
     EXPECT_NEAR(Y.data<float>()[i], YQ.data<float>()[i], 1e-3);
   }
@@ -214,7 +214,7 @@ TEST(QConv, ConvTest) {
     qconv(ConvArgs{}, XQ, WQ, nullptr, &YQ);
   }
   { conv(ConvArgs{}, X, W, nullptr, &Y); }
-  EXPECT_TRUE(Y.dims() == YQ.dims());
+  EXPECT_TRUE(Y.sizes() == YQ.sizes());
   for (auto i = 0; i < Y.size(); ++i) {
     EXPECT_NEAR(Y.data<float>()[i], YQ.data<float>()[i], 1e-3);
   }
@@ -241,8 +241,8 @@ void ConvTest2b1b(int IC, int KH, int KW, int H, int W, int OC, int N, ConvArgs 
     std::vector<std::unique_ptr<TensorCPU>> XQs(k2b1bXBits);
     std::vector<std::unique_ptr<TensorCPU>> YQs(k2b1bXBits);
     for (auto i = 0; i < k2b1bXBits; ++i) {
-      XQs[i] = caffe2::make_unique<Tensor>(CPU);
-      YQs[i] = caffe2::make_unique<Tensor>(CPU);
+      XQs[i] = std::make_unique<Tensor>(CPU);
+      YQs[i] = std::make_unique<Tensor>(CPU);
     }
     Tensor WQN(CPU), WQ(CPU);
     uniformQuantize2b1b(X, XQs, 0.5, 1.0);
@@ -304,9 +304,9 @@ void ConvTest2b1b(int IC, int KH, int KW, int H, int W, int OC, int N, ConvArgs 
 
   { conv(args, X, W_, &bias, &Y); }
 
-  EXPECT_TRUE(Y.dims() == YQ.dims());
-  EXPECT_TRUE(Y.dims() == Y2b1b.dims());
-  EXPECT_TRUE(Y.dims() == YOP.dims());
+  EXPECT_TRUE(Y.sizes() == YQ.sizes());
+  EXPECT_TRUE(Y.sizes() == Y2b1b.sizes());
+  EXPECT_TRUE(Y.sizes() == YOP.sizes());
 
   // for (auto i = 0; i < Y.size(); ++i) {
   //   LOG(INFO) << "i: " << i << ", y[i]: " << Y.data<float>()[i]

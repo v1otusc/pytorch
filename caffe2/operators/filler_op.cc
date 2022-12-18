@@ -5,7 +5,8 @@ namespace caffe2 {
 template <>
 bool RangeFillOp<float, CPUContext>::Fill(Tensor* output) {
   float* data = output->template mutable_data<float>();
-  for (int i = 0; i < output->size(); ++i) {
+  for (int i = 0; i < output->numel(); ++i) {
+    // NOLINTNEXTLINE(cppcoreguidelines-narrowing-conversions,bugprone-narrowing-conversions)
     data[i] = i;
   }
   return true;
@@ -18,10 +19,10 @@ bool DiagonalFillOp<CPUContext>::FillWithType(Tensor* output) {
   T value = OperatorBase::GetSingleArgument<T>("value", 0);
   auto* data = output->template mutable_data<T>();
   // first fill everything with 0
-  math::Set<T, CPUContext>(output->size(), T(0), data, &context_);
+  math::Set<T, CPUContext>(output->numel(), T(0), data, &context_);
   // then calculate step size for diagonal
   auto step = GetStepSize(output);
-  for (int64_t i = 0; i < output->size(); i += step) {
+  for (int64_t i = 0; i < output->numel(); i += step) {
     math::Set<T, CPUContext>(1, value, data, &context_);
     data += step;
   }
@@ -40,7 +41,7 @@ REGISTER_CPU_OPERATOR(RangeFill, RangeFillOp<float, CPUContext>);
 REGISTER_CPU_OPERATOR(LengthsRangeFill, LengthsRangeFillOp<CPUContext>);
 
 OPERATOR_SCHEMA(ConstantFill)
-    .NumInputs(0, 1)
+    .NumInputs(0, 2)
     .NumOutputs(1)
     .AllowInplace({{0, 0}})
     .TensorInferenceFunction(FillerTensorInference<>)
@@ -64,6 +65,8 @@ provided, a shape argument should not be set)
 - If `input_as_shape` is set to True, the input should be a 1D tensor
 containing the desired output shape (the dimensions specified in `extra_shape`
 will also be appended)
+
+- If a second input V is passed, fill the output with the first element of V
 
 When specifying `dtype` argument, use the integer keys from the *DataType* enum
 in TensorProto:

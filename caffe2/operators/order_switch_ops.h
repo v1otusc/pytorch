@@ -1,10 +1,11 @@
 #ifndef CAFFE2_OPERATORS_ORDER_SWITCH_OPS_H_
 #define CAFFE2_OPERATORS_ORDER_SWITCH_OPS_H_
 
-#include <vector>
-
 #include "caffe2/core/operator.h"
 #include "caffe2/utils/math.h"
+#include <c10/util/irange.h>
+
+#include <vector>
 
 namespace caffe2 {
 
@@ -21,21 +22,21 @@ class NHWC2NCHWOp final : public Operator<Context> {
 
   bool RunOnDevice() override {
     const auto& X = Input(0);
-    auto* Y = Output(0);
-    const int ndim = X.ndim();
+
+    const int ndim = X.dim();
     CAFFE_ENFORCE_GE(ndim, 3);
     const int N = X.dim32(0);
     const int C = X.dim32(ndim - 1);
-    std::vector<int> Y_dims(ndim);
+    std::vector<int64_t> Y_dims(ndim);
     Y_dims[0] = N;
     Y_dims[1] = C;
     int HxW = 1;
-    for (int i = 2; i < ndim; ++i) {
+    for (const auto i : c10::irange(2, ndim)) {
       Y_dims[i] = X.dim32(i - 1);
       HxW *= Y_dims[i];
     }
-    Y->Resize(Y_dims);
-    if (X.size() <= 0) {
+    auto* Y = Output(0, Y_dims, at::dtype<T>());
+    if (X.numel() <= 0) {
       return true;
     }
     math::NHWC2NCHW<T, Context>(
@@ -58,12 +59,12 @@ class NCHW2NHWCOp final : public Operator<Context> {
 
   bool RunOnDevice() override {
     const auto& X = Input(0);
-    auto* Y = Output(0);
-    const int ndim = X.ndim();
+
+    const int ndim = X.dim();
     CAFFE_ENFORCE_GE(ndim, 3);
     const int N = X.dim32(0);
     const int C = X.dim32(1);
-    std::vector<int> Y_dims(ndim);
+    std::vector<int64_t> Y_dims(ndim);
     Y_dims[0] = N;
     Y_dims[ndim - 1] = C;
     int HxW = 1;
@@ -71,8 +72,8 @@ class NCHW2NHWCOp final : public Operator<Context> {
       Y_dims[i] = X.dim32(i + 1);
       HxW *= Y_dims[i];
     }
-    Y->Resize(Y_dims);
-    if (X.size() <= 0) {
+    auto* Y = Output(0, Y_dims, at::dtype<T>());
+    if (X.numel() <= 0) {
       return true;
     }
     math::NCHW2NHWC<T, Context>(

@@ -1,10 +1,12 @@
 from numbers import Number
 
 import torch
+from torch._six import nan
 from torch.distributions import constraints
 from torch.distributions.distribution import Distribution
 from torch.distributions.utils import broadcast_all
 
+__all__ = ['Uniform']
 
 class Uniform(Distribution):
     r"""
@@ -15,6 +17,7 @@ class Uniform(Distribution):
 
         >>> m = Uniform(torch.tensor([0.0]), torch.tensor([5.0]))
         >>> m.sample()  # uniformly distributed in the range [0.0, 5.0)
+        >>> # xdoctest: +SKIP
         tensor([ 2.3418])
 
     Args:
@@ -22,12 +25,17 @@ class Uniform(Distribution):
         high (float or Tensor): upper range (exclusive).
     """
     # TODO allow (loc,scale) parameterization to allow independent constraints.
-    arg_constraints = {'low': constraints.dependent, 'high': constraints.dependent}
+    arg_constraints = {'low': constraints.dependent(is_discrete=False, event_dim=0),
+                       'high': constraints.dependent(is_discrete=False, event_dim=0)}
     has_rsample = True
 
     @property
     def mean(self):
         return (self.high + self.low) / 2
+
+    @property
+    def mode(self):
+        return nan * self.high
 
     @property
     def stddev(self):
@@ -58,7 +66,7 @@ class Uniform(Distribution):
         new._validate_args = self._validate_args
         return new
 
-    @constraints.dependent_property
+    @constraints.dependent_property(is_discrete=False, event_dim=0)
     def support(self):
         return constraints.interval(self.low, self.high)
 
@@ -70,8 +78,8 @@ class Uniform(Distribution):
     def log_prob(self, value):
         if self._validate_args:
             self._validate_sample(value)
-        lb = value.ge(self.low).type_as(self.low)
-        ub = value.lt(self.high).type_as(self.low)
+        lb = self.low.le(value).type_as(self.low)
+        ub = self.high.gt(value).type_as(self.low)
         return torch.log(lb.mul(ub)) - torch.log(self.high - self.low)
 
     def cdf(self, value):
@@ -81,8 +89,6 @@ class Uniform(Distribution):
         return result.clamp(min=0, max=1)
 
     def icdf(self, value):
-        if self._validate_args:
-            self._validate_sample(value)
         result = value * (self.high - self.low) + self.low
         return result
 

@@ -4,6 +4,7 @@
 namespace nom {
 namespace repr {
 
+// NOLINTNEXTLINE(modernize-use-equals-default)
 NeuralNetOperator::~NeuralNetOperator() {}
 
 const std::string NeuralNetOperator::getName() const {
@@ -20,6 +21,7 @@ const std::string NeuralNetOperator::getName() const {
   }
 }
 
+// NOLINTNEXTLINE(modernize-use-equals-default)
 NeuralNetData::~NeuralNetData() {}
 
 const std::string NeuralNetData::getName() const {
@@ -30,6 +32,70 @@ const std::string NeuralNetData::getName() const {
     default:
       return "";
   }
+}
+
+NNGraph::NodeRef NNModule::createUniqueDataNode(const std::string& s) {
+  auto curr_name = s;
+  auto iter = 0;
+  bool need_name = true;
+  do {
+    need_name = false;
+    for (const auto& node : dataFlow.getMutableNodes()) {
+      if (nn::getName(node) == curr_name) {
+        std::stringstream ss;
+        ss << iter;
+        curr_name = s + "_" + ss.str();
+        iter++;
+        need_name = true;
+        break;
+      }
+    }
+  } while (need_name);
+  return dataFlow.createNode(std::make_unique<nom::repr::Tensor>(curr_name));
+}
+
+void NNModule::replaceSubgraph(
+    const NNSubgraph& subgraph,
+    const NNGraph::NodeRef& node,
+    const std::vector<NNGraph::NodeRef>& node_inputs,
+    const std::vector<NNGraph::NodeRef>& node_outputs) {
+  auto sg = subgraph;
+  auto sg_inputs = nn::getInputs(sg);
+  auto sg_outputs = nn::getOutputs(sg);
+
+  auto sg_inputs_copy = sg_inputs;
+  auto sg_outputs_copy = sg_outputs;
+
+  for (const auto& input : node_inputs) {
+    sg_inputs_copy.erase(input);
+    // outputs may contain inputs that have additional
+    // consumers external to the subgraph
+    sg_outputs_copy.erase(input);
+  }
+  assert(sg_inputs_copy.size() == 0 && "Not all inputs were listed");
+
+  for (const auto& output : node_outputs) {
+    sg_outputs_copy.erase(output);
+  }
+  assert(sg_outputs_copy.size() == 0 && "Not all outputs were listed");
+
+  for (auto& input : node_inputs) {
+    dataFlow.createEdge(input, node);
+    sg.removeNode(input);
+  }
+  for (auto& output : node_outputs) {
+    if (sg_inputs.count(output)) {
+      dataFlow.createEdge(node, createUniqueDataNode());
+      continue;
+    }
+    dataFlow.createEdge(node, output);
+    sg.removeNode(output);
+  }
+  deleteSubgraph(sg);
+}
+
+void NNModule::deleteSubgraph(const NNSubgraph& subgraph) {
+  dataFlow.deleteNodes(subgraph.getNodes());
 }
 
 namespace nn {
@@ -89,6 +155,93 @@ std::vector<NNGraph::NodeRef> getOutputs(NNGraph::NodeRef n) {
     out.emplace_back(outEdge->head());
   }
   return out;
+}
+
+std::string getName(NNGraph::NodeRef n) {
+  if (is<NeuralNetData>(n)) {
+    return nn::get<NeuralNetData>(n)->getName();
+  } else if (is<NeuralNetOperator>(n)) {
+    return nn::get<NeuralNetOperator>(n)->getName();
+  }
+  return "Unknown";
+}
+
+std::set<NNGraph::NodeRef> getInputs(const NNSubgraph& subgraph) {
+  std::set<NNGraph::NodeRef> subgraph_inputs;
+  for (const auto& node : subgraph.getNodes()) {
+    NOM_REQUIRE_OR_CONT(is<NeuralNetData>(node));
+    if (hasProducer(node)) {
+      if (!subgraph.hasNode(getProducer(node))) {
+        subgraph_inputs.insert(node);
+      }
+    } else {
+      subgraph_inputs.insert(node);
+    }
+  }
+  return subgraph_inputs;
+}
+
+std::set<NNGraph::NodeRef> getOutputs(const NNSubgraph& subgraph) {
+  std::set<NNGraph::NodeRef> subgraph_outputs;
+  for (const auto& n : subgraph.getNodes()) {
+    NOM_REQUIRE_OR_CONT(is<NeuralNetData>(n));
+    if (hasConsumer(n)) {
+      for (const auto& consumer : getConsumers(n)) {
+        if (!subgraph.hasNode(consumer)) {
+          subgraph_outputs.insert(n);
+        }
+      }
+    } else {
+      subgraph_outputs.insert(n);
+    }
+  }
+  return subgraph_outputs;
+}
+
+void replaceProducer(
+    NNGraph::NodeRef tensorNode,
+    NNGraph::NodeRef newProducer) {
+  assert(
+      is<NeuralNetData>(tensorNode) &&
+      "First argument must contain NeuralNetData");
+  auto inEdges = tensorNode->getInEdges();
+  assert(
+      inEdges.size() == 1 && "Tensor node passed in does not have a producer");
+  auto edge = inEdges.at(0);
+  auto prevProducer = edge->tail();
+  prevProducer->removeOutEdge(edge);
+  edge->setTail(newProducer);
+  newProducer->addOutEdge(edge);
+}
+
+void replaceAllUsesWith(
+    NNGraph::NodeRef oldTensorNode,
+    NNGraph::NodeRef newTensorNode) {
+  const auto edges = oldTensorNode->getOutEdges();
+  for (const auto& edge : edges) {
+    edge->setTail(newTensorNode);
+    oldTensorNode->removeOutEdge(edge);
+    newTensorNode->addOutEdge(edge);
+  }
+}
+
+void replaceAsConsumer(
+    NNGraph::NodeRef oldConsumer,
+    NNGraph::NodeRef newConsumer) {
+  const auto edges = oldConsumer->getInEdges();
+  for (const auto& edge : edges) {
+    edge->setHead(newConsumer);
+    oldConsumer->removeInEdge(edge);
+    newConsumer->addInEdge(edge);
+  }
+}
+
+NNGraph::NodeRef
+createOutput(NNModule* nn, NNGraph::NodeRef producer, std::string name) {
+  auto outputNode =
+      nn->dataFlow.createNode(std::make_unique<nom::repr::Tensor>(name));
+  nn->dataFlow.createEdge(producer, outputNode);
+  return outputNode;
 }
 
 // Get all nodes tracked by CF graph
@@ -162,21 +315,27 @@ void coalesceInsertedDataDependencies(repr::NNModule* m) {
   // Finally we reconcile any data dependency issues (if we can).
   for (auto& bbNode : m->controlFlow.getMutableNodes()) {
     auto bb = bbNode->mutableData();
-    std::unordered_set<repr::NNGraph::NodeRef> seen;
-    for (auto instr_iter = bb->getMutableInstructions()->begin();
-         instr_iter != bb->getMutableInstructions()->end();
-         ++instr_iter) {
-      // This cannot be auto& because *iter is pure R-ref
-      auto instr = *instr_iter;
-      for (auto& output : getOutputs(instr)) {
-        for (auto& consumer : getConsumers(output)) {
-          if (seen.count(consumer)) {
-            bb->moveInstructionBefore(instr, consumer);
+    // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
+    int permutation;
+    do {
+      permutation = 0;
+      std::unordered_set<repr::NNGraph::NodeRef> seen;
+      for (auto instr_iter = bb->getMutableInstructions()->begin();
+           instr_iter != bb->getMutableInstructions()->end();
+           ++instr_iter) {
+        // This cannot be auto& because *iter is pure R-ref
+        auto instr = *instr_iter;
+        for (auto& output : getOutputs(instr)) {
+          for (auto& consumer : getConsumers(output)) {
+            if (seen.count(consumer)) {
+              bb->moveInstructionBefore(instr, consumer);
+              ++permutation;
+            }
           }
         }
+        seen.insert(instr);
       }
-      seen.insert(instr);
-    }
+    } while (permutation);
   }
 }
 

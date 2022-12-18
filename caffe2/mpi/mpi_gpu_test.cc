@@ -1,9 +1,9 @@
-#include "caffe2/core/init.h"
+#include <gtest/gtest.h>
 #include "caffe2/core/context_gpu.h"
+#include "caffe2/core/init.h"
 #include "caffe2/core/net.h"
 #include "caffe2/core/operator.h"
 #include "caffe2/mpi/mpi_common.h"
-#include <gtest/gtest.h>
 
 C10_DEFINE_string(
     caffe_test_root,
@@ -47,8 +47,7 @@ const char kBcastNet[] = R"NET(
 
 TEST(MPITest, TestMPIBroadcast) {
   NetDef net_def;
-  CHECK(TextFormat::ParseFromString(
-      string(kBcastNet), &net_def));
+  CHECK(TextFormat::ParseFromString(string(kBcastNet), &net_def));
   // Let's set the network's constant fill value to be the mpi rank.
   auto* arg = net_def.mutable_op(1)->mutable_arg(1);
   CAFFE_ENFORCE_EQ(arg->name(), "value");
@@ -66,8 +65,8 @@ TEST(MPITest, TestMPIBroadcast) {
     // Let's test the value.
     auto& X = ws.GetBlob("X")->Get<Tensor>();
     Tensor X_cpu(X, CPU);
-    EXPECT_EQ(X.size(), 10);
-    for (int i = 0; i < X.size(); ++i) {
+    EXPECT_EQ(X.numel(), 10);
+    for (int i = 0; i < X.numel(); ++i) {
       EXPECT_EQ(X_cpu.data<float>()[i], root);
     }
   }
@@ -108,8 +107,7 @@ const char kReduceNet[] = R"NET(
 
 TEST(MPITest, TestMPIReduce) {
   NetDef net_def;
-  CHECK(TextFormat::ParseFromString(
-      string(kReduceNet), &net_def));
+  CHECK(TextFormat::ParseFromString(string(kReduceNet), &net_def));
   // Let's set the network's constant fill value to be the mpi rank.
   auto* arg = net_def.mutable_op(1)->mutable_arg(1);
   CAFFE_ENFORCE_EQ(arg->name(), "value");
@@ -132,10 +130,10 @@ TEST(MPITest, TestMPIReduce) {
     if (rank == root) {
       // Let's test the value.
       auto& X = ws.GetBlob("X_reduced")->Get<TensorCUDA>();
-      EXPECT_EQ(X.size(), 10);
+      EXPECT_EQ(X.numel(), 10);
       int expected_result = size * (size - 1) / 2;
       Tensor X_cpu(X, CPU);
-      for (int i = 0; i < X.size(); ++i) {
+      for (int i = 0; i < X.numel(); ++i) {
         EXPECT_EQ(X_cpu.data<float>()[i], expected_result);
       }
     }
@@ -174,8 +172,7 @@ const char kMPIAllgatherNet[] = R"NET(
 
 TEST(MPITest, TestMPIAllgather) {
   NetDef net_def;
-  CHECK(TextFormat::ParseFromString(
-      string(kMPIAllgatherNet), &net_def));
+  CHECK(TextFormat::ParseFromString(string(kMPIAllgatherNet), &net_def));
   // Let's set the network's constant fill value to be the mpi rank.
   auto* arg = net_def.mutable_op(1)->mutable_arg(1);
   CAFFE_ENFORCE_EQ(arg->name(), "value");
@@ -192,16 +189,16 @@ TEST(MPITest, TestMPIAllgather) {
   // Let's test the value.
   auto& X = ws.GetBlob("X")->Get<TensorCUDA>();
   Tensor X_cpu(X, CPU);
-  EXPECT_EQ(X.size(), 20);
-  for (int i = 0; i < X.size(); ++i) {
+  EXPECT_EQ(X.numel(), 20);
+  for (int i = 0; i < X.numel(); ++i) {
     EXPECT_EQ(X_cpu.data<float>()[i], rank);
   }
   auto& X_gathered = ws.GetBlob("X_gathered")->Get<TensorCUDA>();
-  EXPECT_EQ(X_gathered.size(), 20 * size);
-  EXPECT_EQ(X_gathered.dim(0), 2 * size);
-  EXPECT_EQ(X_gathered.dim(1), 10);
+  EXPECT_EQ(X_gathered.numel(), 20 * size);
+  EXPECT_EQ(X_gathered.size(0), 2 * size);
+  EXPECT_EQ(X_gathered.size(1), 10);
   Tensor X_gathered_cpu(X_gathered, CPU);
-  for (int i = 0; i < X_gathered.size(); ++i) {
+  for (int i = 0; i < X_gathered.numel(); ++i) {
     EXPECT_EQ(X_gathered_cpu.data<float>()[i], i / 20);
   }
 }
@@ -237,8 +234,7 @@ const char kMPIAllreduceNet[] = R"NET(
 
 TEST(MPITest, TestMPIAllreduce) {
   NetDef net_def;
-  CHECK(TextFormat::ParseFromString(
-      string(kMPIAllreduceNet), &net_def));
+  CHECK(TextFormat::ParseFromString(string(kMPIAllreduceNet), &net_def));
   // Let's set the network's constant fill value to be the mpi rank.
   auto* arg = net_def.mutable_op(1)->mutable_arg(1);
   CAFFE_ENFORCE_EQ(arg->name(), "value");
@@ -254,16 +250,16 @@ TEST(MPITest, TestMPIAllreduce) {
   EXPECT_TRUE(net->Run());
   // Let's test the value.
   auto& X = ws.GetBlob("X")->Get<TensorCUDA>();
-  EXPECT_EQ(X.size(), 10);
+  EXPECT_EQ(X.numel(), 10);
   Tensor X_cpu(X, CPU);
-  for (int i = 0; i < X.size(); ++i) {
+  for (int i = 0; i < X.numel(); ++i) {
     EXPECT_EQ(X_cpu.data<float>()[i], rank);
   }
   auto& X_reduced = ws.GetBlob("X_reduced")->Get<TensorCUDA>();
-  EXPECT_EQ(X_reduced.size(), 10);
+  EXPECT_EQ(X_reduced.numel(), 10);
   int expected_result = size * (size - 1) / 2;
   Tensor X_reduced_cpu(X_reduced, CPU);
-  for (int i = 0; i < X_reduced.size(); ++i) {
+  for (int i = 0; i < X_reduced.numel(); ++i) {
     EXPECT_EQ(X_reduced_cpu.data<float>()[i], expected_result);
   }
 }
@@ -299,8 +295,7 @@ const char kInPlaceMPIAllreduceNet[] = R"NET(
 
 TEST(MPITest, TestInPlaceMPIAllreduce) {
   NetDef net_def;
-  CHECK(TextFormat::ParseFromString(
-      string(kInPlaceMPIAllreduceNet), &net_def));
+  CHECK(TextFormat::ParseFromString(string(kInPlaceMPIAllreduceNet), &net_def));
   // Let's set the network's constant fill value to be the mpi rank.
   auto* arg = net_def.mutable_op(1)->mutable_arg(1);
   CAFFE_ENFORCE_EQ(arg->name(), "value");
@@ -315,18 +310,17 @@ TEST(MPITest, TestInPlaceMPIAllreduce) {
   EXPECT_NE(nullptr, net.get());
   EXPECT_TRUE(net->Run());
   auto& X_reduced = ws.GetBlob("X")->Get<TensorCUDA>();
-  EXPECT_EQ(X_reduced.size(), 10);
+  EXPECT_EQ(X_reduced.numel(), 10);
   int expected_result = size * (size - 1) / 2;
   Tensor X_reduced_cpu(X_reduced, CPU);
-  for (int i = 0; i < X_reduced.size(); ++i) {
+  for (int i = 0; i < X_reduced.numel(); ++i) {
     EXPECT_EQ(X_reduced_cpu.data<float>()[i], expected_result);
   }
 }
 
-}  // namespace caffe2
+} // namespace caffe2
 
-
-GTEST_API_ int main(int argc, char **argv) {
+GTEST_API_ int main(int argc, char** argv) {
   int mpi_ret;
   MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &mpi_ret);
   testing::InitGoogleTest(&argc, argv);

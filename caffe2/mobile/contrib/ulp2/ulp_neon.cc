@@ -19,7 +19,7 @@ inline void quantize2bNeon(size_t QC,
                            float offset,
                            float inter_center_distance,
                            std::array<uint8_t*, k2b1bXBits> XQdata) {
-  DCHECK_EQ(QC % 8, 0);
+  TORCH_DCHECK_EQ(QC % 8, 0);
   const auto offset_plus_2_inter_center_distance = vdupq_n_f32(offset + 2 * inter_center_distance);
   const auto offset_plus_inter_center_distance = vdupq_n_f32(offset + inter_center_distance);
   const auto offset_ = vdupq_n_f32(offset);
@@ -98,7 +98,7 @@ void uniformQuantize2b1bNeon(QConvState* state,
   const size_t C = X.dim32(X.ndim() - 1);
   const size_t N = X.size() / C;
   const size_t QC = divRoundUp(C, 8);
-  auto XQs = X.dims().vec();
+  auto XQs = X.sizes().vec();
   XQs[X.ndim() - 1] = QC;
   CAFFE_ENFORCE_EQ(XQ.size(), k2b1bXBits);
   for (auto i = 0; i < k2b1bXBits; ++i) {
@@ -291,7 +291,7 @@ void qgess_packed(const uint8_t* __restrict__ Ablock,
                   F&& f) {
   static_assert(kUnrollN % 8 == 0, "");
   static_assert(TileDepthBytes == 16, "");
-  DCHECK_EQ(QK % 16, 0);
+  TORCH_DCHECK_EQ(QK % 16, 0);
   uint16x8_t acc[kUnrollM][kUnrollN / 8];
   for (size_t mm = 0; mm < kUnrollM; ++mm) {
     for (size_t nn = 0; nn < kUnrollN / 8; ++nn) {
@@ -438,7 +438,7 @@ void run2b1bConvIm2ColGEMM(QConvState* state,
   const size_t QK = KH * KW * divRoundUp(X.dim32(3), 8);
   Y->Resize(X.dim32(0), OH, OW, OC);
   if (!state->WQPacked) {
-    state->WQPacked = caffe2::make_unique<Tensor>(CPU);
+    state->WQPacked = std::make_unique<Tensor>(CPU);
     qpack_tiles<kGEMMTileSize, kGEMMTileDepthBytes>(state, *(state->WQ), 1, state->WQPacked.get());
     CAFFE_ENFORCE_EQ(state->WQPacked->dim32(0), divRoundUp(OC, kGEMMTileSize));
     CAFFE_ENFORCE_EQ(state->WQPacked->dim32(1), divRoundUp(QK, kGEMMTileDepthBytes));

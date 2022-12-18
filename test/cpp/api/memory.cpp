@@ -2,7 +2,7 @@
 
 #include <torch/csrc/utils/memory.h>
 
-#include <ATen/optional.h>
+#include <c10/util/Optional.h>
 
 struct TestValue {
   explicit TestValue(const int& x) : lvalue_(x) {}
@@ -28,6 +28,7 @@ TEST(MakeUniqueTest, ForwardLvaluesCorrectly) {
 }
 
 TEST(MakeUniqueTest, CanConstructUniquePtrOfArray) {
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays)
   auto ptr = torch::make_unique<int[]>(3);
   // Value initialization is required by the standard.
   ASSERT_EQ(ptr[0], 0);

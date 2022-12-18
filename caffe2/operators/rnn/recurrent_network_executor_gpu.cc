@@ -130,17 +130,24 @@ void CUDARecurrentNetworkExecutor::_ExecRange(int from, int to) {
   for (int stream_id = 0; stream_id <= std::min(stream_seq, max_streams - 1);
        stream_id++) {
     VLOG(1) << "Wait for stream:" << stream_id;
-    CUDA_CHECK(
-        cudaStreamSynchronize(CUDAContext::cuda_stream(gpu_id, stream_id)));
+    CUDA_CHECK(cudaStreamSynchronize(CUDAContext::cuda_stream(gpu_id, stream_id)));
   }
 }
 
 bool CUDARecurrentNetworkExecutor::Run(int T) {
+  CAFFE_ENFORCE_GE(T, 0, "Negative number of steps");
+  if (T == 0) {
+    return true;
+  }
   _ExecRange(0, T);
   return true;
 }
 
 bool CUDARecurrentNetworkExecutor::RunBackwards(int T) {
+  CAFFE_ENFORCE_GE(T, 0, "Negative number of steps");
+  if (T == 0) {
+    return true;
+  }
   _ExecRange(T - 1, -1);
   return true;
 }

@@ -2,7 +2,11 @@
 #define CAFFE2_OPERATORS_PIECEWISE_LINEAR_TRANSFORM_OP_H_
 
 #include "caffe2/core/context.h"
+#include "caffe2/core/export_caffe2_op_to_c10.h"
+#include <c10/util/irange.h>
 #include "caffe2/core/operator.h"
+
+C10_DECLARE_EXPORT_CAFFE2_OP_TO_C10(PiecewiseLinearTransform);
 
 namespace caffe2 {
 
@@ -11,8 +15,9 @@ class PiecewiseLinearTransformOp final : public Operator<Context> {
  public:
   USE_OPERATOR_CONTEXT_FUNCTIONS;
 
-  PiecewiseLinearTransformOp(const OperatorDef& operator_def, Workspace* ws)
-      : Operator<Context>(operator_def, ws) {
+  template <class... Args>
+  explicit PiecewiseLinearTransformOp(Args&&... args)
+      : Operator<Context>(std::forward<Args>(args)...) {
     binary_ = this->template GetSingleArgument<bool>("binary", false);
 
     // Retrieve transform params (i.e., the linear functions).
@@ -57,7 +62,8 @@ class PiecewiseLinearTransformOp final : public Operator<Context> {
       const int64_t num_bounds_per_group,
       const int64_t num_group) {
     const T* start = bounds;
-    for (int64_t i = 0; i < num_group; i++) {
+    for (const auto i : c10::irange(num_group)) {
+      (void)i; // CUDA-10.2 on Windows crashes when C10_UNUSED macro is used
       if (!std::is_sorted(start, start + num_bounds_per_group)) {
         return false;
       }
@@ -122,9 +128,9 @@ class PiecewiseLinearTransformOp final : public Operator<Context> {
       *bounds = bounds_input.template data<T>();
       *slopes = slopes_input.template data<T>();
       *intercepts = intercepts_input.template data<T>();
-      num_bounds = bounds_input.size();
-      num_slopes = slopes_input.size();
-      num_intercepts = intercepts_input.size();
+      num_bounds = bounds_input.numel();
+      num_slopes = slopes_input.numel();
+      num_intercepts = intercepts_input.numel();
     }
     InferNumFunctionsPerGroup(
         num_bounds, num_slopes, num_intercepts, num_func_per_group, num_group);
@@ -132,11 +138,11 @@ class PiecewiseLinearTransformOp final : public Operator<Context> {
 
   bool TransformGeneral() {
     auto& X = Input(0);
-    auto* Y = Output(0);
-    CAFFE_ENFORCE_EQ(X.ndim(), 2);
+
+    CAFFE_ENFORCE_EQ(X.dim(), 2);
     int64_t N = X.dim32(0);
     int64_t M = X.dim32(1);
-    Y->ResizeLike(X);
+    auto* Y = Output(0, X.sizes(), at::dtype<T>());
     const auto* Xdata = X.template data<T>();
     T* Ydata = Y->template mutable_data<T>();
 
@@ -149,11 +155,11 @@ class PiecewiseLinearTransformOp final : public Operator<Context> {
         &bounds, &slopes, &intercepts, &num_func_per_group, &num_group);
     CAFFE_ENFORCE_EQ(num_group, M);
 
-    for (int64_t j = 0; j < M; ++j) {
+    for (const auto j : c10::irange(M)) {
       const T* bounds_group = bounds + j * (num_func_per_group + 1);
       const T* slopes_group = slopes + j * num_func_per_group;
       const T* intercepts_group = intercepts + j * num_func_per_group;
-      for (int64_t i = 0; i < N; ++i) {
+      for (const auto i : c10::irange(N)) {
         Ydata[i * M + j] = PiecewiseLinearTransform(
             Xdata[i * M + j],
             bounds_group,
@@ -167,14 +173,14 @@ class PiecewiseLinearTransformOp final : public Operator<Context> {
 
   bool TransformBinary() {
     auto& X = Input(PREDICTIONS);
-    auto* Y = Output(0);
-    CAFFE_ENFORCE(X.ndim() == 1 || X.ndim() == 2);
+
+    CAFFE_ENFORCE(X.dim() == 1 || X.dim() == 2);
     int64_t N = X.dim32(0);
-    int64_t M = X.ndim() == 2 ? X.dim32(1) : 1;
+    int64_t M = X.dim() == 2 ? X.dim32(1) : 1;
     CAFFE_ENFORCE(
         M == 1 || M == 2,
         "If binary is set to true, the input must be Nx2 or Nx1 tensor");
-    Y->ResizeLike(X);
+    auto* Y = Output(0, X.sizes(), at::dtype<T>());
     const auto* Xdata = X.template data<T>();
     T* Ydata = Y->template mutable_data<T>();
 
@@ -188,12 +194,12 @@ class PiecewiseLinearTransformOp final : public Operator<Context> {
     CAFFE_ENFORCE_EQ(num_group, 1);
 
     if (M == 1) {
-      for (int64_t i = 0; i < N; ++i) {
+      for (const auto i : c10::irange(N)) {
         Ydata[i] = PiecewiseLinearTransform(
             Xdata[i], bounds, slopes, intercepts, num_func_per_group);
       }
     } else {
-      for (int64_t i = 0; i < N; ++i) {
+      for (const auto i : c10::irange(N)) {
         Ydata[i * M + 1] = PiecewiseLinearTransform(
             Xdata[i * M + 1], bounds, slopes, intercepts, num_func_per_group);
         Ydata[i * M] = 1.0f - Ydata[i * M + 1];

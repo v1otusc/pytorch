@@ -4,12 +4,13 @@ from torch.distributions import constraints
 from torch.distributions.distribution import Distribution
 from torch.distributions.utils import broadcast_all, probs_to_logits, lazy_property, logits_to_probs
 
+__all__ = ['NegativeBinomial']
 
 class NegativeBinomial(Distribution):
     r"""
     Creates a Negative Binomial distribution, i.e. distribution
-    of the number of independent identical Bernoulli trials
-    needed before :attr:`total_count` failures are achieved. The probability
+    of the number of successful independent and identical Bernoulli trials
+    before :attr:`total_count` failures are achieved. The probability
     of success of each Bernoulli trial is :attr:`probs`.
 
     Args:
@@ -45,7 +46,7 @@ class NegativeBinomial(Distribution):
         if 'probs' in self.__dict__:
             new.probs = self.probs.expand(batch_shape)
             new._param = new.probs
-        else:
+        if 'logits' in self.__dict__:
             new.logits = self.logits.expand(batch_shape)
             new._param = new.logits
         super(NegativeBinomial, new).__init__(batch_shape, validate_args=False)
@@ -58,6 +59,10 @@ class NegativeBinomial(Distribution):
     @property
     def mean(self):
         return self.total_count * torch.exp(self.logits)
+
+    @property
+    def mode(self):
+        return ((self.total_count - 1) * self.logits.exp()).floor().clamp(min=0.)
 
     @property
     def variance(self):
@@ -77,8 +82,10 @@ class NegativeBinomial(Distribution):
 
     @lazy_property
     def _gamma(self):
+        # Note we avoid validating because self.total_count can be zero.
         return torch.distributions.Gamma(concentration=self.total_count,
-                                         rate=torch.exp(-self.logits))
+                                         rate=torch.exp(-self.logits),
+                                         validate_args=False)
 
     def sample(self, sample_shape=torch.Size()):
         with torch.no_grad():
@@ -94,5 +101,6 @@ class NegativeBinomial(Distribution):
 
         log_normalization = (-torch.lgamma(self.total_count + value) + torch.lgamma(1. + value) +
                              torch.lgamma(self.total_count))
+        log_normalization[self.total_count + value == 0.] = 0.
 
         return log_unnormalized_prob - log_normalization

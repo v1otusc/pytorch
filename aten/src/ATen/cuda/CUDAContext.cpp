@@ -1,65 +1,69 @@
-#include "ATen/cuda/CUDAContext.h"
-#include "THC/THCGeneral.hpp"
+#include <ATen/cuda/CUDAContext.h>
+#include <c10/cuda/CUDACachingAllocator.h>
+#include <c10/util/CallOnce.h>
+
+#include <ATen/cuda/CUDAConfig.h>
+#include <mutex>
+#include <deque>
+#include <vector>
 
 namespace at { namespace cuda {
 
+namespace {
+
+DeviceIndex num_gpus = -1;
+c10::once_flag init_flag;
+std::deque<c10::once_flag> device_flags;
+std::vector<cudaDeviceProp> device_properties;
+
+void initCUDAContextVectors() {
+  num_gpus = c10::cuda::device_count();
+  device_flags.resize(num_gpus);
+  device_properties.resize(num_gpus);
+}
+
+void initDeviceProperty(DeviceIndex device_index) {
+  cudaDeviceProp device_prop;
+  AT_CUDA_CHECK(cudaGetDeviceProperties(&device_prop, device_index));
+  device_properties[device_index] = device_prop;
+}
+
+} // anonymous namespace
+
+// We need this function to force the linking against torch_cuda(_cpp) on Windows.
+// If you need to modify this function, please specify a new function and apply
+// the changes according to https://github.com/pytorch/pytorch/pull/34288.
+// Related issue: https://github.com/pytorch/pytorch/issues/31611.
 /* Device info */
-int64_t getNumGPUs() {
-  int count;
-  AT_CUDA_CHECK(cudaGetDeviceCount(&count));
-  return count;
-}
-
-int64_t current_device() {
-  int cur_device;
-  AT_CUDA_CHECK(cudaGetDevice(&cur_device));
-  return cur_device;
-}
-
-void set_device(int64_t device) {
-  AT_CUDA_CHECK(cudaSetDevice((int)device));
+int warp_size() {
+  return getCurrentDeviceProperties()->warpSize;
 }
 
 cudaDeviceProp* getCurrentDeviceProperties() {
-  return THCState_getCurrentDeviceProperties(at::globalContext().getTHCState());
+  auto device = c10::cuda::current_device();
+  return getDeviceProperties(device);
 }
 
 cudaDeviceProp* getDeviceProperties(int64_t device) {
-  return THCState_getDeviceProperties(at::globalContext().getTHCState(), (int)device);
+  c10::call_once(init_flag, initCUDAContextVectors);
+  if (device == -1) device = c10::cuda::current_device();
+  AT_ASSERT(device >= 0 && device < num_gpus);
+  c10::call_once(device_flags[device], initDeviceProperty, device);
+  return &device_properties[device];
 }
 
-/* Streams */
-CUDAStream createCUDAStream(
-  const bool isHighPriority
-, int64_t device) {
-  return detail::CUDAStream_createStream(isHighPriority, device);
-}
-
-CUDAStream getDefaultCUDAStream(int64_t device) {
-  return detail::CUDAStream_getDefaultStream(device);
-}
-CUDAStream getCurrentCUDAStream(int64_t device) {
-  return detail::CUDAStream_getCurrentStream(device);
-}
-
-void setCurrentCUDAStream(CUDAStream stream) {
-  detail::CUDAStream_setStream(stream.internals());
-}
-void uncheckedSetCurrentCUDAStream(CUDAStream stream) {
-  detail::CUDAStream_uncheckedSetStream(stream.internals());
+bool canDeviceAccessPeer(int64_t device, int64_t peer_device) {
+  c10::call_once(init_flag, initCUDAContextVectors);
+  if (device == -1) device = c10::cuda::current_device();
+  AT_ASSERT(device >= 0 && device < num_gpus);
+  AT_ASSERT(peer_device >= 0 && peer_device < num_gpus);
+  int can_access = 0;
+  AT_CUDA_CHECK(cudaDeviceCanAccessPeer(&can_access, device, peer_device));
+  return can_access != 0;
 }
 
 Allocator* getCUDADeviceAllocator() {
-  return at::globalContext().getTHCState()->cudaDeviceAllocator;
-}
-
-/* Handles */
-cusparseHandle_t getCurrentCUDASparseHandle() {
-  return THCState_getCurrentSparseHandle(at::globalContext().getTHCState());
-}
-
-cublasHandle_t getCurrentCUDABlasHandle() {
-  return THCState_getCurrentBlasHandle(at::globalContext().getTHCState());
+  return c10::cuda::CUDACachingAllocator::get();
 }
 
 } // namespace cuda

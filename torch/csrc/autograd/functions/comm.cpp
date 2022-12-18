@@ -1,16 +1,14 @@
-#ifdef USE_CUDA
-
 #include <torch/csrc/autograd/functions/comm.h>
 
+#include <ATen/core/functional.h>
 #include <torch/csrc/autograd/function.h>
 #include <torch/csrc/autograd/functions/utils.h>
 #include <torch/csrc/autograd/variable.h>
 #include <torch/csrc/cuda/comm.h>
-#include <torch/csrc/utils/functional.h>
 
 #include <ATen/ATen.h>
 #include <ATen/cuda/CUDAContext.h>
-#include "c10/util/Optional.h"
+#include <c10/util/Optional.h>
 
 #include <cstddef>
 #include <memory>
@@ -18,11 +16,15 @@
 
 namespace torch {
 namespace autograd {
+// NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init)
 Scatter::Scatter(
     std::vector<at::Device> devices,
+    // NOLINTNEXTLINE(modernize-pass-by-value)
     const c10::optional<std::vector<int64_t>>& chunk_sizes,
     int64_t dim,
-    const c10::optional<std::vector<at::cuda::CUDAStream>>& streams,
+    // NOLINTNEXTLINE(modernize-pass-by-value)
+    const c10::optional<std::vector<c10::optional<at::cuda::CUDAStream>>>&
+        streams,
     bool unsqueeze_scalars)
     : devices_(std::move(devices)),
       chunk_sizes_(chunk_sizes),
@@ -30,12 +32,13 @@ Scatter::Scatter(
       streams_(streams),
       unsqueeze_scalars_(unsqueeze_scalars) {}
 
+Scatter::~Scatter() = default;
+
 variable_list Scatter::apply(variable_list&& inputs) {
-#ifdef USE_CUDA
   AT_ASSERT(inputs.size() == 1);
   auto& input = inputs.front();
 
-  std::shared_ptr<Function> grad_fn;
+  std::shared_ptr<Node> grad_fn;
   if (compute_requires_grad(input)) {
     grad_fn =
         std::make_shared<Gather>(/*destination_device=*/input.device(), dim_);
@@ -46,7 +49,12 @@ variable_list Scatter::apply(variable_list&& inputs) {
     return device.index();
   });
   auto tensors = torch::cuda::scatter(
-      std::move(input), device_indices, chunk_sizes_, dim_, streams_);
+      // NOLINTNEXTLINE(performance-move-const-arg)
+      std::move(input),
+      device_indices,
+      chunk_sizes_,
+      dim_,
+      streams_);
 
   std::vector<Variable> variables;
   variables.reserve(tensors.size());
@@ -60,25 +68,25 @@ variable_list Scatter::apply(variable_list&& inputs) {
     }
   }
 
-  set_history(variables, grad_fn);
+  if (grad_fn) {
+    set_history(variables, grad_fn);
+  }
 
   return variables;
-#else
-  AT_ERROR("Scatter is only supported in CUDA environments");
-#endif
 }
 
 Gather::Gather(const at::Device& destination_device, int64_t dim)
     : destination_device_(destination_device), dim_(dim) {}
 
+Gather::~Gather() = default;
+
 variable_list Gather::apply(variable_list&& inputs) {
-#ifdef USE_CUDA
   bool all_are_zero_dim = true;
   for (const auto& input : inputs) {
-    AT_CHECK(
+    TORCH_CHECK(
         input.is_cuda(),
         "All inputs to Gather must be CUDA tensors, got ",
-        input.type());
+        input.toString());
     if (input.dim() > 0) {
       all_are_zero_dim = false;
     }
@@ -86,25 +94,18 @@ variable_list Gather::apply(variable_list&& inputs) {
 
   const bool unsqueeze_scalars = all_are_zero_dim && dim_ == 0;
   if (unsqueeze_scalars) {
-    AT_WARN(
+    TORCH_WARN(
         "Was asked to gather along dimension 0, but all "
         "input tensors were scalars; will instead unsqueeze "
         "and return a vector.");
   }
 
-  std::vector<at::Tensor> tensors;
-  tensors.reserve(inputs.size());
-  for (auto& variable : inputs) {
-    if (unsqueeze_scalars) {
-      tensors.push_back(variable.view(1));
-    } else {
-      tensors.push_back(std::move(variable));
-    }
-  }
-
-  std::shared_ptr<Function> grad_fn;
+  std::shared_ptr<Node> grad_fn;
+  // compute this before moving variables from `inputs`
   if (compute_requires_grad(inputs)) {
+    // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
     std::vector<at::Device> source_devices;
+    // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
     std::vector<int64_t> input_sizes;
     for (auto& input : inputs) {
       source_devices.push_back(input.device());
@@ -119,18 +120,33 @@ variable_list Gather::apply(variable_list&& inputs) {
     grad_fn->set_next_edges(collect_next_edges(inputs));
   }
 
-  // This is special logic for torch::cuda::gather!
-  const auto destination_index =
-      destination_device_.is_cpu() ? -1 : destination_device_.index();
-  auto variable = torch::cuda::gather(tensors, dim_, destination_index);
-  set_history(variable, grad_fn);
+  // NOLINTNEXTLINE(cppcoreguidelines-init-variables)
+  std::vector<at::Tensor> tensors;
+  tensors.reserve(inputs.size());
+  for (auto& variable : inputs) {
+    if (unsqueeze_scalars) {
+      tensors.push_back(variable.view(1));
+    } else {
+      tensors.push_back(std::move(variable));
+    }
+  }
+
+  // Disable the autograd during the actual computation
+  // torch::cuda::gather does not return a view or change things inplace
+  // so no need for extra logic here
+  at::Tensor variable;
+  {
+    at::AutoDispatchBelowAutograd mode;
+    // This is special logic for torch::cuda::gather!
+    const auto destination_index =
+        destination_device_.is_cpu() ? -1 : destination_device_.index();
+    variable = torch::cuda::gather(tensors, dim_, destination_index);
+  }
+  if (grad_fn) {
+    set_history(variable, grad_fn);
+  }
   return {variable};
-#else
-  AT_ERROR("Gather is only supported in CUDA environments");
-#endif
 }
 
 } // namespace autograd
 } // namespace torch
-
-#endif

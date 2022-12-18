@@ -1,9 +1,9 @@
 ## @package recurrent
 # Module caffe2.python.recurrent
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
+
+
+
+
 
 from caffe2.python import core, workspace
 from future.utils import viewitems, viewkeys
@@ -282,7 +282,7 @@ def recurrent_net(
     cell_net.Proto().type = 'simple'
 
     # The last output is a list of step workspaces,
-    # which is only needed internally for gradient propogation
+    # which is only needed internally for gradient propagation
     return results[:-1]
 
 

@@ -11,8 +11,9 @@ template <typename T, class Context, class Engine = DefaultEngine>
 class MatMulOp final : public Operator<Context> {
  public:
   USE_OPERATOR_CONTEXT_FUNCTIONS;
-  MatMulOp(const OperatorDef& operator_def, Workspace* ws)
-      : Operator<Context>(operator_def, ws),
+  template <class... Args>
+  explicit MatMulOp(Args&&... args)
+      : Operator<Context>(std::forward<Args>(args)...),
         axis_a_(this->template GetSingleArgument<int>("axis_a", 1)),
         axis_b_(this->template GetSingleArgument<int>("axis_b", 1)),
         trans_a_(this->template GetSingleArgument<int>("trans_a", 0)),
@@ -66,7 +67,7 @@ class MatMulOp final : public Operator<Context> {
     Y_shape_cache_[0] = a_dim0;
     Y_shape_cache_[1] = b_dim1;
     auto* Y = Output(0, Y_shape_cache_, at::dtype<T>());
-    CAFFE_ENFORCE(a_dim0 * b_dim1 == Y->size(), dimErrorString());
+    CAFFE_ENFORCE(a_dim0 * b_dim1 == Y->numel(), dimErrorString());
     // Y = A * B
     math::Gemm<T, Context, Engine>(
         trans_a_ ? CblasTrans : CblasNoTrans,

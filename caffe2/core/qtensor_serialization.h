@@ -46,7 +46,7 @@ void QTensorSerializer<Context>::Serialize(
   blob_proto.set_type(kQTensorBlobQType);
   QTensorProto& proto = *blob_proto.mutable_qtensor();
   proto.set_name(name);
-  for (int i = 0; i < qtensor.ndim(); ++i) {
+  for (const auto i : c10::irange(qtensor.ndim())) {
     proto.add_dims(qtensor.dim32(i));
   }
   proto.set_precision(qtensor.precision());
@@ -55,7 +55,7 @@ void QTensorSerializer<Context>::Serialize(
   proto.set_is_signed(qtensor.is_signed());
   detail::CopyToProtoWithCast(
       qtensor.nbytes(), qtensor.data(), proto.mutable_data(), &this->context_);
-  acceptor(name, blob_proto.SerializeAsString());
+  acceptor(name, SerializeBlobProtoAsString_EnforceCheck(blob_proto));
 }
 
 template <class Context>

@@ -1,6 +1,5 @@
 ## @package caffe_translator
 # Module caffe2.python.caffe_translator
-#!/usr/bin/env python2
 
 import argparse
 import copy
@@ -211,9 +210,9 @@ class TranslatorRegistry(object):
         try:
             caffe_ops, params = cls.registry_[layer.type](
                 layer, pretrained_blobs, is_test, **kwargs)
-        except KeyError:
+        except KeyError as e:
             raise KeyError('No translator registered for layer: %s yet.' %
-                           str(layer))
+                           str(layer)) from e
         if caffe_ops is None:
             caffe_ops = []
         if type(caffe_ops) is not list:
@@ -911,12 +910,10 @@ if __name__ == '__main__':
     output_init_net = args.init_net
     output_predict_net = args.predict_net
 
-    text_format.Merge(
-        open(input_proto, 'r').read(), caffenet
-    )
-    caffenet_pretrained.ParseFromString(
-        open(input_caffemodel, 'rb').read()
-    )
+    with open(input_proto) as f:
+        text_format.Merge(f.read(), caffenet)
+    with open(input_caffemodel, 'rb') as f:
+        caffenet_pretrained.ParseFromString(f.read())
     net, pretrained_params = TranslateModel(
         caffenet, caffenet_pretrained, is_test=True,
         remove_legacy_pad=args.remove_legacy_pad,

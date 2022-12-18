@@ -1,22 +1,28 @@
 #pragma once
 
-#include "torch/csrc/python_headers.h"
-#include "ATen/ATen.h"
+#include <c10/core/ScalarType.h>
+#include <torch/csrc/Export.h>
+#include <torch/csrc/python_headers.h>
 
 const int DTYPE_NAME_LEN = 64;
 
-struct THPDtype {
-  PyObject_HEAD
-  at::ScalarType scalar_type;
+struct TORCH_API THPDtype {
+  PyObject_HEAD at::ScalarType scalar_type;
+  // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays)
   char name[DTYPE_NAME_LEN + 1];
 };
 
-extern PyTypeObject THPDtypeType;
+TORCH_API extern PyTypeObject THPDtypeType;
 
-inline bool THPDtype_Check(PyObject *obj) {
+inline bool THPDtype_Check(PyObject* obj) {
   return Py_TYPE(obj) == &THPDtypeType;
 }
 
-PyObject * THPDtype_New(at::ScalarType scalar_type, const std::string& name);
+inline bool THPPythonScalarType_Check(PyObject* obj) {
+  return obj == (PyObject*)(&PyFloat_Type) ||
+      obj == (PyObject*)(&PyBool_Type) || obj == (PyObject*)(&PyLong_Type);
+}
 
-void THPDtype_init(PyObject *module);
+PyObject* THPDtype_New(at::ScalarType scalar_type, const std::string& name);
+
+void THPDtype_init(PyObject* module);

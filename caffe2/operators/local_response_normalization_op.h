@@ -12,8 +12,9 @@ template <typename T, class Context>
 class LRNOpBase : public Operator<Context> {
  public:
   USE_OPERATOR_CONTEXT_FUNCTIONS;
-  LRNOpBase(const OperatorDef& operator_def, Workspace* ws)
-      : Operator<Context>(operator_def, ws),
+  template <class... Args>
+  explicit LRNOpBase(Args&&... args)
+      : Operator<Context>(std::forward<Args>(args)...),
         size_(this->template GetSingleArgument<int>("size", 0)),
         alpha_(this->template GetSingleArgument<float>("alpha", 0)),
         beta_(this->template GetSingleArgument<float>("beta", 0)),
@@ -21,10 +22,10 @@ class LRNOpBase : public Operator<Context> {
         order_(StringToStorageOrder(
             this->template GetSingleArgument<string>("order", "NCHW"))),
         pre_pad_((size_ - 1) / 2) {
-    DCHECK_GT(size_, 0);
-    DCHECK_EQ(size_ % 2, 1);
-    DCHECK_GT(alpha_, 0);
-    DCHECK_GT(beta_, 0);
+    TORCH_DCHECK_GT(size_, 0);
+    TORCH_DCHECK_EQ(size_ % 2, 1);
+    TORCH_DCHECK_GT(alpha_, 0);
+    TORCH_DCHECK_GT(beta_, 0);
   }
 
   bool RunOnDevice() override {
@@ -57,8 +58,9 @@ template <typename T, class Context>
 class LRNOp final : public LRNOpBase<T, Context> {
  public:
   USE_OPERATOR_CONTEXT_FUNCTIONS;
-  LRNOp(const OperatorDef& operator_def, Workspace* ws)
-      : LRNOpBase<T, Context>(operator_def, ws) {}
+  template <class... Args>
+  explicit LRNOp(Args&&... args)
+      : LRNOpBase<T, Context>(std::forward<Args>(args)...) {}
 
   bool RunOnDeviceWithOrderNCHW() override;
   bool RunOnDeviceWithOrderNHWC() override;
@@ -74,8 +76,9 @@ template <typename T, class Context>
 class LRNGradientOp final : public LRNOpBase<T, Context> {
  public:
   USE_OPERATOR_CONTEXT_FUNCTIONS;
-  LRNGradientOp(const OperatorDef& operator_def, Workspace* ws)
-      : LRNOpBase<T, Context>(operator_def, ws) {}
+  template <class... Args>
+  explicit LRNGradientOp(Args&&... args)
+      : LRNOpBase<T, Context>(std::forward<Args>(args)...) {}
 
   bool RunOnDeviceWithOrderNCHW() override;
   bool RunOnDeviceWithOrderNHWC() override;

@@ -1,31 +1,28 @@
 #pragma once
 
-#include "torch/csrc/python_headers.h"
-#include <ATen/ATen.h>
+#include <ATen/core/Generator.h>
+#include <torch/csrc/Export.h>
+#include <torch/csrc/python_headers.h>
 
-#include "THP_export.h"
-
+// NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init)
 struct THPGenerator {
-  PyObject_HEAD
-  at::Generator *cdata;
-  bool owner;  // if true, frees cdata in destructor
+  PyObject_HEAD at::Generator cdata;
 };
 
-#define THPGenerator_Check(obj) \
-  PyObject_IsInstance(obj, THPGeneratorClass)
-
-#define THPGenerator_TH_CData(obj) \
-  (THGenerator*)((THPGenerator*)obj)->cdata->unsafeGetTH()
-
-THP_API PyObject * THPGenerator_New();
-
-// Creates a new Python object wrapping the at::Generator. The reference is
-// borrowed. The caller should ensure that the THGenerator* object lifetime
+// Creates a new Python object wrapping the default at::Generator. The reference
+// is borrowed. The caller should ensure that the at::Generator object lifetime
 // last at least as long as the Python wrapper.
-THP_API PyObject * THPGenerator_NewWithGenerator(at::Generator& cdata);
+TORCH_PYTHON_API PyObject* THPGenerator_initDefaultGenerator(
+    at::Generator cdata);
 
-THP_API PyObject *THPGeneratorClass;
+#define THPGenerator_Check(obj) PyObject_IsInstance(obj, THPGeneratorClass)
 
-#ifdef _THP_CORE
-bool THPGenerator_init(PyObject *module);
-#endif
+TORCH_PYTHON_API extern PyObject* THPGeneratorClass;
+
+bool THPGenerator_init(PyObject* module);
+
+TORCH_PYTHON_API PyObject* THPGenerator_Wrap(at::Generator gen);
+
+// Creates a new Python object for a Generator. The Generator must not already
+// have a PyObject* associated with it.
+PyObject* THPGenerator_NewWithVar(PyTypeObject* type, at::Generator gen);

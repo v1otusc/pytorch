@@ -1,4 +1,4 @@
-from numbers import Number
+from numbers import Real, Number
 
 import torch
 from torch.distributions import constraints
@@ -6,6 +6,7 @@ from torch.distributions.dirichlet import Dirichlet
 from torch.distributions.exp_family import ExponentialFamily
 from torch.distributions.utils import broadcast_all
 
+__all__ = ['Beta']
 
 class Beta(ExponentialFamily):
     r"""
@@ -13,6 +14,7 @@ class Beta(ExponentialFamily):
 
     Example::
 
+        >>> # xdoctest: +IGNORE_WANT("non-deterinistic")
         >>> m = Beta(torch.tensor([0.5]), torch.tensor([0.5]))
         >>> m.sample()  # Beta distributed with concentration concentration1 and concentration0
         tensor([ 0.1046])
@@ -28,12 +30,12 @@ class Beta(ExponentialFamily):
     has_rsample = True
 
     def __init__(self, concentration1, concentration0, validate_args=None):
-        if isinstance(concentration1, Number) and isinstance(concentration0, Number):
+        if isinstance(concentration1, Real) and isinstance(concentration0, Real):
             concentration1_concentration0 = torch.tensor([float(concentration1), float(concentration0)])
         else:
             concentration1, concentration0 = broadcast_all(concentration1, concentration0)
             concentration1_concentration0 = torch.stack([concentration1, concentration0], -1)
-        self._dirichlet = Dirichlet(concentration1_concentration0)
+        self._dirichlet = Dirichlet(concentration1_concentration0, validate_args=validate_args)
         super(Beta, self).__init__(self._dirichlet._batch_shape, validate_args=validate_args)
 
     def expand(self, batch_shape, _instance=None):
@@ -49,16 +51,17 @@ class Beta(ExponentialFamily):
         return self.concentration1 / (self.concentration1 + self.concentration0)
 
     @property
+    def mode(self):
+        return self._dirichlet.mode[..., 0]
+
+    @property
     def variance(self):
         total = self.concentration1 + self.concentration0
         return (self.concentration1 * self.concentration0 /
                 (total.pow(2) * (total + 1)))
 
     def rsample(self, sample_shape=()):
-        value = self._dirichlet.rsample(sample_shape).select(-1, 0)
-        if isinstance(value, Number):
-            value = self._dirichlet.concentration.new_tensor(value)
-        return value
+        return self._dirichlet.rsample(sample_shape).select(-1, 0)
 
     def log_prob(self, value):
         if self._validate_args:

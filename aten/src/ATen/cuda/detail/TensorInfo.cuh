@@ -1,7 +1,6 @@
 #pragma once
 
-#include <ATen/ATen.h>
-#include <ATen/CPUApplyUtils.h>
+#include <ATen/CollapseDims.h>
 
 namespace at {
 namespace cuda {
@@ -62,7 +61,7 @@ TensorInfo<T, IndexType>::TensorInfo(T* p,
 template <typename T, typename IndexType>
 void
 TensorInfo<T, IndexType>::reduceDim(int dim) {
-  AT_CHECK(dim < dims && dim >= 0, "expected dim between 0 and dims - 1");
+  TORCH_CHECK(dim < dims && dim >= 0, "expected dim between 0 and dims - 1");
   sizes[dim] = 1;
 }
 

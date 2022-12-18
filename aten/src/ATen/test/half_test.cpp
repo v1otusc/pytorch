@@ -1,4 +1,4 @@
-#include "gtest/gtest.h"
+#include <gtest/gtest.h>
 
 #include <ATen/ATen.h>
 #include <iostream>
@@ -6,8 +6,7 @@
 #include <sstream>
 #include <cmath>
 #include <type_traits>
-#include "test_seed.h"
-#include "test_assert.h"
+#include <ATen/test/test_assert.h>
 
 using namespace at;
 
@@ -164,4 +163,12 @@ TEST(TestHalf, CommonMath) {
   assert(std::abs(std::isnan(Half(0.0)) - std::isnan(0.0f)) <= threshold);
   assert(std::abs(std::isinf(Half(0.0)) - std::isinf(0.0f)) <= threshold);
 #endif
+}
+
+TEST(TestHalf, ComplexHalf) {
+  Half real = 3.0f;
+  Half imag = -10.0f;
+  auto complex = c10::complex<Half>(real, imag);
+  assert(complex.real() == real);
+  assert(complex.imag() == imag);
 }

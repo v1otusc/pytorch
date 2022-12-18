@@ -1,18 +1,28 @@
-#include "ATen/ATen.h"
-#include "ATen/TensorUtils.h"
-#include "ATen/NativeFunctions.h"
+#define TORCH_ASSERT_ONLY_METHOD_OPERATORS
+#include <ATen/core/Tensor.h>
+#include <ATen/TensorUtils.h>
+#include <ATen/TensorOperators.h>
+#include <ATen/native/cpu/WeightNormKernel.h>
 
-#include <cstring>
-#include <memory>
-#include <sstream>
-#include <vector>
-
-#ifdef _OPENMP
-#include <omp.h>
+#ifndef AT_PER_OPERATOR_HEADERS
+#include <ATen/Functions.h>
+#include <ATen/NativeFunctions.h>
+#else
+#include <ATen/ops/_weight_norm_differentiable_backward_native.h>
+#include <ATen/ops/_weight_norm_interface.h>
+#include <ATen/ops/_weight_norm_native.h>
+#include <ATen/ops/empty_strided.h>
+#include <ATen/ops/norm_except_dim.h>
+#include <ATen/ops/norm_except_dim_native.h>
 #endif
+
+#include <vector>
 
 namespace at {
 namespace native {
+
+DEFINE_DISPATCH(weight_norm_stub);
+DEFINE_DISPATCH(weight_norm_backward_stub);
 
 // Staying faithful to the Python for now for clarity, look for optimizations later
 // (e.g., single return statement for RVO)
@@ -36,13 +46,45 @@ Tensor norm_except_dim(const Tensor & v, int64_t pow, int64_t dim)
   }
 }
 
+std::tuple<Tensor,Tensor> weight_norm_cpu(
+    const Tensor& v,
+    const Tensor& g,
+    int64_t dim) {
+  auto w = at::empty_like(v, at::MemoryFormat::Contiguous);
+
+  // align with cuda behavior, keep norm in 'Float' when g is 'BFloat16'
+  const auto dtype = g.scalar_type() == at::ScalarType::BFloat16 ?
+      at::ScalarType::Float : g.scalar_type();
+  auto norm = at::empty_strided(g.sizes(), g.strides(), g.options().dtype(dtype));
+  weight_norm_stub(kCPU, w, norm, v, g, dim);
+
+  return std::tuple<Tensor, Tensor>{w, norm};
+}
+
+std::tuple<Tensor, Tensor> weight_norm_backward_cpu(
+    const Tensor& grad_w,
+    const Tensor& saved_v,
+    const Tensor& saved_g,
+    const Tensor& saved_norm,
+    int64_t dim) {
+  TORCH_CHECK(saved_v.is_contiguous(), "saved_v must be contiguous");
+  TORCH_CHECK(saved_g.is_contiguous(), "saved_g must be contiguous");
+  TORCH_CHECK(saved_norm.is_contiguous(), "saved_norm must be contiguous");
+
+  auto grad_v = at::empty_like(saved_v, at::MemoryFormat::Contiguous);
+  auto grad_g = at::empty_like(saved_g, at::MemoryFormat::Contiguous);
+  weight_norm_backward_stub(kCPU, grad_v, grad_g, grad_w, saved_v, saved_g, saved_norm, dim);
+
+  return std::tuple<Tensor, Tensor>{grad_v, grad_g};
+}
+
 Tensor _weight_norm
   (const Tensor & v_in,
    const Tensor & g_in,
    int64_t dim)
 {
 
-  AT_CHECK(
+  TORCH_CHECK(
     v_in.device() == g_in.device(),
     "weight_norm: expected v_in and g_in to be on the same device, but v_in is "
     "on ", v_in.device(), " and g_in is on ", g_in.device());
@@ -50,12 +92,15 @@ Tensor _weight_norm
   auto v = v_in.contiguous();
   auto g = g_in.contiguous();
 
-  bool can_use_fused = v.type().is_cuda() && (dim == 0 || dim == v.dim() - 1);
+  auto has_half_dtype = v.scalar_type() == at::ScalarType::Half
+    || g.scalar_type() == at::ScalarType::Half;
+
+  bool can_use_fused = !has_half_dtype && ((dim == 0) || (dim == v.dim() - 1));
 
   if (can_use_fused) {
     // weight_norm does not have a derivative defined for it, so this will route back through
     // VariableType.cpp, and construct a WeightNormFusedBackward object in the autograd graph.
-    return std::get<0>(at::_weight_norm_cuda_interface(v, g, dim));
+    return std::get<0>(at::_weight_norm_interface(v, g, dim));
   } else {
     // Double-differentiable primitive ops
     // at::native::norm_except_dim would probably be fine as well.
@@ -63,7 +108,7 @@ Tensor _weight_norm
   }
 }
 
-// Differentiable backward path, an alternative to weight_norm_cuda_backward, to be used
+// Differentiable backward path, an alternative to weight_norm_backward, to be used
 // when backward is itself creating a graph.
 // The GradMode::is_enabled() check must be performed within Functions.cpp; that's why we
 // define a separate function here, instead of inlining it in weight_norm_cuda_backward.
@@ -77,23 +122,23 @@ std::tuple<Tensor, Tensor> _weight_norm_differentiable_backward
   // In Functions.cpp, the HardshrinkBackward object supplies "grad.contiguous()"
   // as the first argument, so grad_w should be contiguous here.
   // All these checks should succeed:
-  AT_CHECK(grad_w.is_contiguous(), "grad_w must be contiguous");
-  AT_CHECK(saved_v.is_contiguous(), "saved_v must be contiguous");
-  AT_CHECK(saved_g.is_contiguous(), "saved_g must be contiguous");
-  AT_CHECK(saved_norms.is_contiguous(), "saved_norms must be contiguous");
+  TORCH_CHECK(grad_w.is_contiguous(), "grad_w must be contiguous");
+  TORCH_CHECK(saved_v.is_contiguous(), "saved_v must be contiguous");
+  TORCH_CHECK(saved_g.is_contiguous(), "saved_g must be contiguous");
+  TORCH_CHECK(saved_norms.is_contiguous(), "saved_norms must be contiguous");
 
   int64_t last_dim = saved_v.dim() - 1;
   int64_t last_size = saved_v.size(last_dim);
 
   // Like weight_norm_fused_backward, weight_norm_differentiable_backward should only ever be called
   // through a WeightNormFusedBackward object, so we expect that dim == 0 || dim == saved_v.size(-1)
-  AT_CHECK(dim == 0 || dim == last_dim, "Expected dim to be the first or last dimension");
+  TORCH_CHECK(dim == 0 || dim == last_dim, "Expected dim to be the first or last dimension");
 
   // saved_g and saved_norms are already shaped to broadcast over the correct dimensions
 
   // ...but saved_norms might be Float when saved_g and saved_v are half.
   // To consider:  saved_norms.to(..., True /*non_blocking*/);
-  auto norms = saved_norms.to(saved_g.type().scalarType());
+  auto norms = saved_norms.to(saved_g.scalar_type());
 
   std::vector<int64_t> bcast_size(saved_v.dim(), 1);
 

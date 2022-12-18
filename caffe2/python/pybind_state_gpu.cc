@@ -13,6 +13,7 @@
 #ifdef CAFFE2_USE_CUDNN
 #include "caffe2/core/common_cudnn.h"
 #endif // CAFFE2_USE_CUDNN
+#include <c10/cuda/CUDAGuard.h>
 #include "caffe2/core/context_gpu.h"
 #include "caffe2/operators/operator_fallback_gpu.h"
 #include "caffe2/python/pybind_state_registry.h"
@@ -25,14 +26,10 @@ namespace caffe2 {
 namespace python {
 
 REGISTER_CUDA_OPERATOR(Python, GPUFallbackOp);
-REGISTER_CUDA_OPERATOR(
-    PythonGradient,
-    GPUFallbackOp);
+REGISTER_CUDA_OPERATOR(PythonGradient, GPUFallbackOp);
 
-REGISTER_CUDA_OPERATOR(PythonDLPack, PythonOp<CUDAContext, true>);
-REGISTER_CUDA_OPERATOR(
-    PythonDLPackGradient,
-    PythonGradientOp<CUDAContext, true>);
+REGISTER_CUDA_OPERATOR(PythonDLPack, GPUFallbackOp);
+REGISTER_CUDA_OPERATOR(PythonDLPackGradient, GPUFallbackOp);
 
 REGISTER_BLOB_FEEDER(CUDA, TensorFeeder<CUDAContext>);
 
@@ -43,10 +40,24 @@ void addCUDAGlobalMethods(py::module& m) {
   m.def("get_cuda_version", &CudaVersion);
 #ifdef CAFFE2_USE_CUDNN
   m.def("get_cudnn_version", &cudnnCompiledVersion);
-  m.attr("cudnn_convolution_fwd_algo_count") = py::int_((int) CUDNN_CONVOLUTION_FWD_ALGO_COUNT);
-  m.attr("cudnn_convolution_bwd_data_algo_count") = py::int_((int) CUDNN_CONVOLUTION_BWD_DATA_ALGO_COUNT);
-  m.attr("cudnn_convolution_bwd_filter_algo_count") = py::int_((int) CUDNN_CONVOLUTION_BWD_FILTER_ALGO_COUNT);
+  m.attr("cudnn_convolution_fwd_algo_count") =
+      py::int_((int)CUDNN_CONVOLUTION_FWD_ALGO_COUNT);
+  m.attr("cudnn_convolution_bwd_data_algo_count") =
+      py::int_((int)CUDNN_CONVOLUTION_BWD_DATA_ALGO_COUNT);
+  m.attr("cudnn_convolution_bwd_filter_algo_count") =
+      py::int_((int)CUDNN_CONVOLUTION_BWD_FILTER_ALGO_COUNT);
+#else
+  m.def("get_cudnn_version", []() { return static_cast<size_t>(0); });
+  m.attr("cudnn_convolution_fwd_algo_count") = py::int_(0);
+  m.attr("cudnn_convolution_bwd_data_algo_count") = py::int_(0);
+  m.attr("cudnn_convolution_bwd_filter_algo_count") = py::int_(0);
 #endif
+  m.def("get_gpu_memory_info", [](int device_id) {
+    CUDAGuard guard(device_id);
+    size_t device_free, device_total;
+    CUDA_CHECK(cudaMemGetInfo(&device_free, &device_total));
+    return std::pair<size_t, size_t>{device_free, device_total};
+  });
   m.def("get_cuda_peer_access_pattern", []() {
     std::vector<std::vector<bool>> pattern;
     CAFFE_ENFORCE(caffe2::GetCudaPeerAccessPattern(&pattern));
@@ -143,7 +154,7 @@ void addCUDAObjectMethods(py::module& m) {
           "Copy data from given DLPack tensor into this tensor.")
       .def_property_readonly(
           "_shape",
-          [](const DLPackWrapper<CUDAContext>& t) { return t.tensor->dims(); })
+          [](const DLPackWrapper<CUDAContext>& t) { return t.tensor->sizes(); })
       .def(
           "_reshape",
           [](DLPackWrapper<CUDAContext>* t, std::vector<int64_t> dims) {

@@ -42,7 +42,7 @@ template <typename SkipOutputCopy>
 class GPUFallbackOpEx final : public Operator<CUDAContext> {
  public:
   USE_OPERATOR_FUNCTIONS(CUDAContext);
-  GPUFallbackOpEx(const OperatorDef& def, Workspace* ws)
+  explicit GPUFallbackOpEx(const OperatorDef& def, Workspace* ws)
       : Operator<CUDAContext>(def, ws) {
     CAFFE_ENFORCE_EQ(def.device_option().device_type(), PROTO_CUDA);
     OperatorDef base_def_(def);
@@ -52,22 +52,20 @@ class GPUFallbackOpEx final : public Operator<CUDAContext> {
     // Set up the symbols for the local workspace.
     for (const string& name : def.input()) {
       local_input_blobs_.push_back(local_ws_.CreateBlob(name));
-      CHECK_NOTNULL(local_input_blobs_.back());
+      TORCH_CHECK_NOTNULL(local_input_blobs_.back());
     }
     base_op_ = CreateOperator(base_def_, &local_ws_);
     for (const string& name : def.output()) {
       local_output_blobs_.push_back(local_ws_.GetBlob(name));
-      CHECK_NOTNULL(local_output_blobs_.back());
+      TORCH_CHECK_NOTNULL(local_output_blobs_.back());
     }
   }
 
   bool RunOnDevice() override {
-    bool need_sync = false;
-    for (int i = 0; i < InputSize(); ++i) {
+    for (const auto i : c10::irange(InputSize())) {
       if (this->InputIsTensorType(i, CUDA)) {
-        BlobGetMutableTensor(local_input_blobs_[i], CPU)
-            ->CopyFrom(Input(i), &context_);
-        need_sync = true;
+        // use sync copy
+        BlobGetMutableTensor(local_input_blobs_[i], CPU)->CopyFrom(Input(i));
       } else {
         VLOG(1) << "Input " << i << " is not TensorCUDA. Skipping copy.";
         // Note(jiayq): This removes a const but conceptually
@@ -79,17 +77,12 @@ class GPUFallbackOpEx final : public Operator<CUDAContext> {
       }
     }
 
-    // Sync to make sure copies are done.
-    if (need_sync) {
-      context_.FinishDeviceComputation();
-    }
-
     if (!base_op_->Run()) {
       LOG(ERROR) << "Base op run failed in GPUFallbackOp. Def: "
                  << ProtoDebugString(this->debug_def());
       return false;
     }
-    for (int i = 0; i < OutputSize(); ++i) {
+    for (const auto i : c10::irange(OutputSize())) {
       if (SkipOutputCopy::Contains(i)) {
         VLOG(1) << "Copy output: index " << i << " skipped.";
         continue;

@@ -1,9 +1,8 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-from __future__ import unicode_literals
 
-from caffe2.proto import caffe2_pb2
+
+
+
+
 from caffe2.python import core, workspace
 from hypothesis import given
 import caffe2.python.hypothesis_test_util as hu
@@ -77,7 +76,7 @@ class RoIAlignRotatedOp(hu.HypothesisTestCase):
         self.assertReferenceChecks(
             device_option=gc, op=op, inputs=[X, R], reference=roialign_ref
         )
-        if gc.device_type == caffe2_pb2.CUDA:
+        if core.IsGPUDeviceType(gc.device_type):
             self.assertGradientChecks(gc, op, [X, R], 0, [0])
 
     @given(
@@ -151,9 +150,9 @@ class RoIAlignRotatedOp(hu.HypothesisTestCase):
             indexer = [slice(None)] * m.ndim
             try:
                 indexer[axis] = slice(None, None, -1)
-            except IndexError:
+            except IndexError as e:
                 raise ValueError("axis=%i is invalid for the %i-dimensional input array"
-                                 % (axis, m.ndim))
+                                 % (axis, m.ndim)) from e
             return m[tuple(indexer)]
 
         def roialign_ref(X, R):
@@ -202,5 +201,10 @@ class RoIAlignRotatedOp(hu.HypothesisTestCase):
         self.assertReferenceChecks(
             device_option=gc, op=op, inputs=[X, R], reference=roialign_ref
         )
-        if gc.device_type == caffe2_pb2.CUDA:
+        if core.IsGPUDeviceType(gc.device_type):
             self.assertGradientChecks(gc, op, [X, R], 0, [0])
+
+
+if __name__ == '__main__':
+    import unittest
+    unittest.main()

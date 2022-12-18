@@ -4,156 +4,108 @@
 // object, which is essentially a giant virtual dispatch table
 // for every operation we support dynamically dispatching over.
 //
-// We intend to deprecate this design for a more extensible one
-// that permits addition of extra operators *out-of-band*.  However,
-// for the time being, it's the only mechanism which works for
-// dispatching PyTorch operators, so we are supporting it for now.
-//
-// The use of Type in ATen/core poses another problem: on a
-// mobile build, we don't want to assume that Type is available.
-// But all methods on Tensor which route to PyTorch operators
-// need to somehow *get* a Type, and then do a virtual call on it.
-// How are we going to get the Type?  Why, by another indirection!
-//
-// This registry is the mechanism for getting a concrete Type.
-// For a regular build, we register all types here; for a
-// mobile build, there are no registrations and instead we
-// return a stub which errors for all functions.
-//
-// NB: We don't use Registry for this, because we don't want to
-// pay for a hash table lookup every time we do an operation.
+// This has been deprecated in favor of ATenDispatch, and in the future,
+// c10 dispatcher.
+// TODO: Clean up what remains here
 
-#include <ATen/core/Backend.h>
-#include <ATen/core/ScalarType.h>
-#include <ATen/core/VariableHooksInterface.h>
-#include <c10/util/Exception.h>
+#include <c10/core/impl/LocalDispatchKeySet.h>
 
 namespace at {
 
-struct CAFFE2_API LegacyTypeInitInterface {
-  virtual ~LegacyTypeInitInterface() {}
-  virtual void initCPU() const {
-    AT_ERROR("cannot use CPU without ATen library");
-  }
-  virtual void initCUDA() const {
-    AT_ERROR("cannot use CUDA without ATen CUDA library");
-  }
-  virtual void initComplex() const {
-    AT_ERROR("cannot use complex without ATen Complex library");
-  }
-};
-struct CAFFE2_API LegacyTypeInitArgs {};
-C10_DECLARE_REGISTRY(
-    LegacyTypeInitRegistry,
-    LegacyTypeInitInterface,
-    LegacyTypeInitArgs);
-#define REGISTER_LEGACY_TYPE_INIT(clsname) \
-  C10_REGISTER_CLASS(LegacyTypeInitRegistry, clsname, clsname)
+// A RAII, thread local (!) guard that will disable dispatch to variable
+// handler.
+//
+// NOTE [ Treating Variables as non-Variables in type dispatch ]
+//
+// What exactly does AutoDispatchBelowAutograd do?  The short answer is, it causes
+// dispatches on ATen functions to go to the non-variable implementation,
+// bypassing autograd handling (and also profiling and tracing).
+//
+// To understand why this guard exists, it's helpful to understand the history
+// behind how Variable was implemented.  Previously, Variables were implemented
+// as a wrapper on Tensors; so the act of processing a Variable involved
+// unwrapping the underlying Tensor, and then calling the underlying base
+// operation on /that/ operation
+//
+// However, after the Variable/Tensor merge, there is no concept of unwrapping
+// a tensor anymore.  If you just call the operation on the same variable
+// again inside your VariableType handler, you'll dispatch back to
+// VariableType, which is not what we want.
+//
+// The solution to the above problem is to add `at::AutoDispatchBelowAutograd`, which
+// when enabled will cause `legacyTensorType()` and `getType()` to always return
+// non-Variable type, even if the tensor being called on is a variable.
 
-CAFFE2_API const LegacyTypeInitInterface& getLegacyTypeInit();
-
-struct Type;
-
-struct CAFFE2_API LegacyTypeDeleter {
-  using TypeDeleterFun = void(Type*);
-  TypeDeleterFun *fn_ = nullptr;
-  LegacyTypeDeleter() {}
-  /* implicit */ LegacyTypeDeleter(TypeDeleterFun *fn) : fn_(fn) {}
-  void operator()(Type * ptr) {
-    if (fn_) {
-      (*fn_)(ptr);
-    }
-  }
-};
-
-class CAFFE2_API LegacyTypeDispatch {
- public:
-  using TypeUniquePtr = std::unique_ptr<Type, LegacyTypeDeleter>;
-  // WARNING: This function has the precondition that you have
-  // initialized the type you want to call.  This initialization
-  // step is generally done by Context, or assumed because you
-  // have a Tensor and thus the Type of that Tensor must already
-  // be initialized.
-  Type* getNonVariableTypeRaw(Backend p, ScalarType s) {
-    return type_registry[static_cast<int>(p)][static_cast<int>(s)].get();
-  }
-  Type * getNonVariableTypeOpt(Backend p, ScalarType s) {
-    if (p != Backend::Undefined) {
-      initForDeviceType(backendToDeviceType(p));
-      initForScalarType(s);
-    }
-    auto type = getNonVariableTypeRaw(p, s);
-
-    if(!type) {
-      // there is only a single Undefined Type.
-      if (p == Backend::Undefined || s == ScalarType::Undefined) {
-        return getNonVariableTypeRaw(Backend::Undefined, ScalarType::Undefined);
-      }
-    }
-
-    return type;
+/* Note [AutoDispatchBelowAutograd]
+ * AutoDispatchBelowAutograd is **INTERNAL ONLY** that it should be used
+ * for kernel implementations and customized C++ kernels.
+ * If you are looking for a guard to run workload in inference mode, please use
+ * c10::InferenceMode RAII which is user facing API.
+ * In the past AutoDispatchBelowAutograd(or its old version AutoNonVariableTypeMode)
+ * was used in the user code for inference-only workload, this was under risk of
+ * producing wrong results silently in some edge cases. For example:
+ * ```
+ *  torch::Tensor s = torch::ones({1, 2, 3}).set_requires_grad(true);
+ *  torch::Tensor out = s * s;
+ *  {
+ *    at::AutoDispatchBelowAutograd guard;
+ *    s.add_(1);  // Skips version bump on `s`.
+ *  }
+ *  // WRONG GRADIENT! s.grad() are now computed using `s` value after the
+ *  // inplace update.
+ *  out.backward(torch::ones_like(out));
+ * ```
+ * Users should use `c10::InferenceMode` here so that it'll properly throw an
+ * error saying "one of the variables needed for gradient computation has be modified."
+ */
+struct TORCH_API AutoDispatchBelowAutograd {
+  AutoDispatchBelowAutograd() :
+    autograd_guard_(c10::autograd_dispatch_keyset) {
   }
 
-  Type & getNonVariableType(Backend p, ScalarType s) {
-    auto* type = getNonVariableTypeOpt(p, s);
-    if (!type) AT_ERROR(toString(p), toString(s), "Type is not enabled.");
-    return *type;
-  }
-
-  Type* getTypeRaw(Backend p, ScalarType s, bool is_variable) {
-    auto baseType = getNonVariableTypeRaw(p, s);
-    if (is_variable) {
-      return &detail::getVariableHooks().getVariableTypeFromBaseType(*baseType);
-    } else {
-      return baseType;
-    }
-  }
-  Type & getVariableType(Backend p, ScalarType s) {
-    auto& baseType = getNonVariableType(p, s);
-    return detail::getVariableHooks().getVariableTypeFromBaseType(baseType);
-  }
-  Type & getType(Backend p, ScalarType s, bool is_variable) {
-    if (is_variable) {
-      return getVariableType(p, s);
-    } else {
-      return getNonVariableType(p, s);
-    }
-  }
-  void registerType(Backend b, ScalarType s, TypeUniquePtr&& t) {
-    type_registry[static_cast<int>(b)][static_cast<int>(s)] = std::move(t);
-    detail::getVariableHooks().registerVariableTypeFor(this, b, s);
-  }
-private:
-  void initForDeviceType(DeviceType p) {
-    static std::once_flag cpu_once;
-    static std::once_flag cuda_once;
-    if (p == DeviceType::CPU) {
-      std::call_once(cpu_once, [] {
-        getLegacyTypeInit().initCPU();
-      });
-    } else if (p == DeviceType::CUDA) {
-      std::call_once(cuda_once, [] {
-        getLegacyTypeInit().initCUDA();
-      });
-    }
-  }
-  void initForScalarType(ScalarType s) {
-    static std::once_flag once;
-    // Only complex may need initialization
-    if (isComplexType(s)) {
-      std::call_once(once, [] {
-        getLegacyTypeInit().initComplex();
-      });
-    }
-  }
-
-  // NB: type_registry has nullptr for all CUDA backends until
-  // CUDA initialization has occurred
-  TypeUniquePtr type_registry
-    [static_cast<int>(Backend::NumOptions)]
-    [static_cast<int>(ScalarType::NumOptions)];
+  // disable all autograd dispatch keys
+  c10::impl::ExcludeDispatchKeyGuard autograd_guard_;
 };
 
-CAFFE2_API LegacyTypeDispatch& globalLegacyTypeDispatch();
+// TODO: AutoNonVariableTypeMode should be removed in release 1.10.
+struct TORCH_API AutoNonVariableTypeMode {
+  AutoNonVariableTypeMode(bool enabled = true) :
+    autograd_guard_(c10::autograd_dispatch_keyset) {
+    TORCH_WARN_ONCE("AutoNonVariableTypeMode is deprecated and will be removed in 1.10 release. "
+        "For kernel implementations please use AutoDispatchBelowADInplaceOrView instead, "
+        "If you are looking for a user facing API to enable running your inference-only "
+        "workload, please use c10::InferenceMode. Using AutoDispatchBelowADInplaceOrView in user code "
+        "is under risk of producing silent wrong result in some edge cases. "
+        "See Note [AutoDispatchBelowAutograd] for more details.");
+    TORCH_INTERNAL_ASSERT(enabled);
+  }
 
+  // disable all autograd dispatch keys
+  c10::impl::ExcludeDispatchKeyGuard autograd_guard_;
+};
+
+struct TORCH_API AutoDispatchSkipFunctionalize {
+  AutoDispatchSkipFunctionalize() :
+    dispatch_key_guard_(c10::DispatchKeySet(c10::DispatchKey::Functionalize)) {
+  }
+  c10::impl::ExcludeDispatchKeyGuard dispatch_key_guard_;
+};
+
+/* Note [AutoDispatchBelowADInplaceOrView]
+ * AutoDispatchBelowADInplaceOrView is equivalent to AutoNonVariableTypeMode
+ * before we split inplace & view ops out of VariableType kernel.
+ * Note this guard is used in VariableType kernels for functional ops
+ * as well as ADInplaceOrView kernels for inplace/view ops to enforce the
+ * Invariant:
+ *   Once you are in VariableType/ADInplaceOrView kernel for an op,
+ *   you never go back to a kernel on same dispatch key until
+ *   you finish the current op.
+ */
+struct TORCH_API AutoDispatchBelowADInplaceOrView {
+  AutoDispatchBelowADInplaceOrView() :
+    dispatch_key_guard_(c10::autograd_dispatch_keyset_with_ADInplaceOrView) {
+  }
+  // disable Autograd & ADInplaceOrView dispatch keys
+  c10::impl::ExcludeDispatchKeyGuard dispatch_key_guard_;
+};
 } // namespace at

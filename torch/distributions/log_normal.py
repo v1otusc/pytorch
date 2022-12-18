@@ -1,9 +1,9 @@
-import torch
 from torch.distributions import constraints
 from torch.distributions.transforms import ExpTransform
 from torch.distributions.normal import Normal
 from torch.distributions.transformed_distribution import TransformedDistribution
 
+__all__ = ['LogNormal']
 
 class LogNormal(TransformedDistribution):
     r"""
@@ -15,6 +15,7 @@ class LogNormal(TransformedDistribution):
 
     Example::
 
+        >>> # xdoctest: +IGNORE_WANT("non-deterinistic")
         >>> m = LogNormal(torch.tensor([0.0]), torch.tensor([1.0]))
         >>> m.sample()  # log-normal distributed with mean=0 and stddev=1
         tensor([ 0.1046])
@@ -28,7 +29,7 @@ class LogNormal(TransformedDistribution):
     has_rsample = True
 
     def __init__(self, loc, scale, validate_args=None):
-        base_dist = Normal(loc, scale)
+        base_dist = Normal(loc, scale, validate_args=validate_args)
         super(LogNormal, self).__init__(base_dist, ExpTransform(), validate_args=validate_args)
 
     def expand(self, batch_shape, _instance=None):
@@ -46,6 +47,10 @@ class LogNormal(TransformedDistribution):
     @property
     def mean(self):
         return (self.loc + self.scale.pow(2) / 2).exp()
+
+    @property
+    def mode(self):
+        return (self.loc - self.scale.square()).exp()
 
     @property
     def variance(self):

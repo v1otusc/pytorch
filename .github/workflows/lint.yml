@@ -16,10 +16,14 @@ jobs:
   lintrunner:
     runs-on: linux.20_04.16x
     steps:
-      - uses: chkimes/actions-ssh@v0.1
-        name: ssh
+      - name: Setup SSH (Click me for login details)
+        uses: pytorch/test-infra/.github/actions/setup-ssh@main
         with:
-          sshUser: clee2000
+          github-secret: ${{ secrets.GITHUB_TOKEN }}
+          instructions: |
+            All testing is done inside the container, to start an interactive session run:
+              docker exec -it $(docker container ps --format '{{.ID}}') bash
+
       - name: Checkout PyTorch
         uses: pytorch/pytorch/.github/actions/checkout-pytorch@master
         with:

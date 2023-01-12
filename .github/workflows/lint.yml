@@ -16,14 +16,6 @@ jobs:
   lintrunner:
     runs-on: linux.20_04.16x
     steps:
-      - name: Setup SSH (Click me for login details)
-        uses: pytorch/test-infra/.github/actions/setup-ssh@main
-        with:
-          github-secret: ${{ secrets.GITHUB_TOKEN }}
-          instructions: |
-            All testing is done inside the container, to start an interactive session run:
-              docker exec -it $(docker container ps --format '{{.ID}}') bash
-
       - name: Checkout PyTorch
         uses: pytorch/pytorch/.github/actions/checkout-pytorch@master
         with:
@@ -58,13 +50,38 @@ jobs:
 
       - name: Run lintrunner on all files (nonretryable)
         run: |
-          set +e
-          if ! lintrunner --force-color --all-files --tee-json=lint.json; then
-              echo ""
-              echo -e "\e[1m\e[36mYou can reproduce these results locally by using \`lintrunner\`.\e[0m"
-              echo -e "\e[1m\e[36mSee https://github.com/pytorch/pytorch/wiki/lintrunner for setup instructions.\e[0m"
-              exit 1
-          fi
+          set -ex
+          lintrunner --paths-cmd='git grep -Il .' --take FLAKE8
+          lintrunner --paths-cmd='git grep -Il .' --take CLANGFORMAT
+          lintrunner --paths-cmd='git grep -Il .' --take MYPY
+          lintrunner --paths-cmd='git grep -Il .' --take MYPYNOFOLLOW
+          lintrunner --paths-cmd='git grep -Il .' --take MYPYSTRICT
+          lintrunner --paths-cmd='git grep -Il .' --take CLANGTIDY
+          lintrunner --paths-cmd='git grep -Il .' --take TYPEIGNORE
+          lintrunner --paths-cmd='git grep -Il .' --take NOQA
+          lintrunner --paths-cmd='git grep -Il .' --take CIRCLECI
+          lintrunner --paths-cmd='git grep -Il .' --take NATIVEFUNCTIONS
+          lintrunner --paths-cmd='git grep -Il .' --take NEWLINE
+          lintrunner --paths-cmd='git grep -Il .' --take SPACES
+          lintrunner --paths-cmd='git grep -Il .' --take TABS
+          lintrunner --paths-cmd='git grep -Il .' --take INCLUDE
+          lintrunner --paths-cmd='git grep -Il .' --take PYBIND11_INCLUDE
+          lintrunner --paths-cmd='git grep -Il .' --take ERROR_PRONE_ISINSTANCE
+          lintrunner --paths-cmd='git grep -Il .' --take PYBIND11_SPECIALIZATION
+          lintrunner --paths-cmd='git grep -Il .' --take PYPIDEP
+          lintrunner --paths-cmd='git grep -Il .' --take EXEC
+          lintrunner --paths-cmd='git grep -Il .' --take CUBINCLUDE
+          lintrunner --paths-cmd='git grep -Il .' --take RAWCUDA
+          lintrunner --paths-cmd='git grep -Il .' --take ROOT_LOGGING
+          lintrunner --paths-cmd='git grep -Il .' --take CMAKE
+          lintrunner --paths-cmd='git grep -Il .' --take SHELLCHECK
+          lintrunner --paths-cmd='git grep -Il .' --take ACTIONLINT
+          lintrunner --paths-cmd='git grep -Il .' --take TESTOWNERS
+          lintrunner --paths-cmd='git grep -Il .' --take CALL_ONCE
+          lintrunner --paths-cmd='git grep -Il .' --take ONCE_FLAG
+          lintrunner --paths-cmd='git grep -Il .' --take WORKFLOWSYNC
+          lintrunner --paths-cmd='git grep -Il .' --take UFMT
+          lintrunner --paths-cmd='git grep -Il .' --take COPYRIGHT
 
       - name: Store annotations
         if: always() && github.event_name == 'pull_request'

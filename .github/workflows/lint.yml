@@ -16,6 +16,8 @@ jobs:
   lintrunner:
     runs-on: linux.20_04.16x
     steps:
+      - uses: chkimes/actions-ssh@v0.1
+        name: ssh
       - name: Checkout PyTorch
         uses: pytorch/pytorch/.github/actions/checkout-pytorch@master
         with:

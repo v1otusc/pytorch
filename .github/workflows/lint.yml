@@ -51,37 +51,37 @@ jobs:
       - name: Run lintrunner on all files (nonretryable)
         run: |
           set -ex
-          lintrunner --paths-cmd='git grep -Il .' --take FLAKE8
-          lintrunner --paths-cmd='git grep -Il .' --take CLANGFORMAT
-          lintrunner --paths-cmd='git grep -Il .' --take MYPY
-          lintrunner --paths-cmd='git grep -Il .' --take MYPYNOFOLLOW
-          lintrunner --paths-cmd='git grep -Il .' --take MYPYSTRICT
-          lintrunner --paths-cmd='git grep -Il .' --take CLANGTIDY
-          lintrunner --paths-cmd='git grep -Il .' --take TYPEIGNORE
-          lintrunner --paths-cmd='git grep -Il .' --take NOQA
-          lintrunner --paths-cmd='git grep -Il .' --take CIRCLECI
-          lintrunner --paths-cmd='git grep -Il .' --take NATIVEFUNCTIONS
-          lintrunner --paths-cmd='git grep -Il .' --take NEWLINE
-          lintrunner --paths-cmd='git grep -Il .' --take SPACES
-          lintrunner --paths-cmd='git grep -Il .' --take TABS
-          lintrunner --paths-cmd='git grep -Il .' --take INCLUDE
-          lintrunner --paths-cmd='git grep -Il .' --take PYBIND11_INCLUDE
-          lintrunner --paths-cmd='git grep -Il .' --take ERROR_PRONE_ISINSTANCE
-          lintrunner --paths-cmd='git grep -Il .' --take PYBIND11_SPECIALIZATION
-          lintrunner --paths-cmd='git grep -Il .' --take PYPIDEP
-          lintrunner --paths-cmd='git grep -Il .' --take EXEC
-          lintrunner --paths-cmd='git grep -Il .' --take CUBINCLUDE
-          lintrunner --paths-cmd='git grep -Il .' --take RAWCUDA
-          lintrunner --paths-cmd='git grep -Il .' --take ROOT_LOGGING
-          lintrunner --paths-cmd='git grep -Il .' --take CMAKE
-          lintrunner --paths-cmd='git grep -Il .' --take SHELLCHECK
-          lintrunner --paths-cmd='git grep -Il .' --take ACTIONLINT
-          lintrunner --paths-cmd='git grep -Il .' --take TESTOWNERS
-          lintrunner --paths-cmd='git grep -Il .' --take CALL_ONCE
-          lintrunner --paths-cmd='git grep -Il .' --take ONCE_FLAG
-          lintrunner --paths-cmd='git grep -Il .' --take WORKFLOWSYNC
-          lintrunner --paths-cmd='git grep -Il .' --take UFMT
-          lintrunner --paths-cmd='git grep -Il .' --take COPYRIGHT
+          time lintrunner --paths-cmd='git grep -Il .' --take FLAKE8
+          time lintrunner --paths-cmd='git grep -Il .' --take CLANGFORMAT
+          time lintrunner --paths-cmd='git grep -Il .' --take MYPY
+          time lintrunner --paths-cmd='git grep -Il .' --take MYPYNOFOLLOW
+          time lintrunner --paths-cmd='git grep -Il .' --take MYPYSTRICT
+          time lintrunner --paths-cmd='git grep -Il .' --take CLANGTIDY
+          time lintrunner --paths-cmd='git grep -Il .' --take TYPEIGNORE
+          time lintrunner --paths-cmd='git grep -Il .' --take NOQA
+          time lintrunner --paths-cmd='git grep -Il .' --take CIRCLECI
+          time lintrunner --paths-cmd='git grep -Il .' --take NATIVEFUNCTIONS
+          time lintrunner --paths-cmd='git grep -Il .' --take NEWLINE
+          time lintrunner --paths-cmd='git grep -Il .' --take SPACES
+          time lintrunner --paths-cmd='git grep -Il .' --take TABS
+          time lintrunner --paths-cmd='git grep -Il .' --take INCLUDE
+          time lintrunner --paths-cmd='git grep -Il .' --take PYBIND11_INCLUDE
+          time lintrunner --paths-cmd='git grep -Il .' --take ERROR_PRONE_ISINSTANCE
+          time lintrunner --paths-cmd='git grep -Il .' --take PYBIND11_SPECIALIZATION
+          time lintrunner --paths-cmd='git grep -Il .' --take PYPIDEP
+          time lintrunner --paths-cmd='git grep -Il .' --take EXEC
+          time lintrunner --paths-cmd='git grep -Il .' --take CUBINCLUDE
+          time lintrunner --paths-cmd='git grep -Il .' --take RAWCUDA
+          time lintrunner --paths-cmd='git grep -Il .' --take ROOT_LOGGING
+          time lintrunner --paths-cmd='git grep -Il .' --take CMAKE
+          time lintrunner --paths-cmd='git grep -Il .' --take SHELLCHECK
+          time lintrunner --paths-cmd='git grep -Il .' --take ACTIONLINT
+          time lintrunner --paths-cmd='git grep -Il .' --take TESTOWNERS
+          time lintrunner --paths-cmd='git grep -Il .' --take CALL_ONCE
+          time lintrunner --paths-cmd='git grep -Il .' --take ONCE_FLAG
+          time lintrunner --paths-cmd='git grep -Il .' --take WORKFLOWSYNC
+          time lintrunner --paths-cmd='git grep -Il .' --take UFMT
+          time lintrunner --paths-cmd='git grep -Il .' --take COPYRIGHT
 
       - name: Store annotations
         if: always() && github.event_name == 'pull_request'

@@ -595,7 +595,7 @@ def fuse_quantization(gm: torch.fx.GraphModule):
     if not is_quantized_graph_module(gm):
         return gm
 
-    gm = fuse_reference_quantized_conv_relu(gm)
+    # gm = fuse_reference_quantized_conv_relu(gm)
 
     return gm
 
@@ -639,4 +639,6 @@ def fuse_reference_quantized_conv_relu(gm: torch.fx.GraphModule):
         return qy
 
     subgraph_rewriter.replace_pattern(gm, pattern, replacement)
+    gm.graph.lint()
+    gm.recompile()
     return gm

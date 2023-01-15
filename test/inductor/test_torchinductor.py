@@ -21,7 +21,7 @@ import torch
 
 import torch._dynamo
 from torch._dynamo.debug_utils import same_two_models
-from torch._dynamo.testing import rand_strided, same
+from torch._dynamo.testing import make_test_cls_with_patches, rand_strided, same
 from torch.fx.experimental.proxy_tensor import make_fx
 from torch.fx.passes.shape_prop import ShapeProp
 from torch.nn import functional as F
@@ -5056,6 +5056,25 @@ class CommonTemplate:
             fn,
             (torch.randn(1, 16, 64, 72).to(memory_format=torch.channels_last),),
         )
+
+
+def _add_dynamic_shapes_test(test_name: str):
+    make_test_cls_with_patches(
+        cls=CommonTemplate,
+        make_new_cls=False,
+        new_fn_suffix="_dynamic_shapes",
+        name_pred=lambda name: name.startswith(test_name),
+        patches=(
+            (config, "dynamic_shapes", True),
+            (torch._dynamo.config, "dynamic_shapes", True),
+            (functorch_config, "use_dynamic_shapes", True),
+        ),
+    )
+
+
+_add_dynamic_shapes_test("test_conv2d_binary")
+_add_dynamic_shapes_test("test_conv2d_packed")
+_add_dynamic_shapes_test("test_conv2d_unary")
 
 
 if HAS_CPU:

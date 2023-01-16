@@ -629,6 +629,7 @@ Symbolic Numbers
     sym_int
     sym_max
     sym_min
+    sym_not
 
 Optimizations
 -------------

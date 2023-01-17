@@ -824,7 +824,7 @@ class TestFSDPOptimState(FSDPTest):
         """
         initializer = self._model_class[model_class]
         if osd_comm_method == _OSDCommMethod.OPTIM_STATE_DICT:
-            osd_method = FSDP._optim_state_dict
+            osd_method = FSDP.optim_state_dict
         elif osd_comm_method == _OSDCommMethod.FLATTEN_SHARDED_OSD:
             osd_method = FSDP.sharded_optim_state_dict
         else:

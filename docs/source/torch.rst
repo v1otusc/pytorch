@@ -625,10 +625,14 @@ Symbolic Numbers
     :toctree: generated
     :nosignatures:
 
+    SymInt
+    SymFloat
+    SymBool
     sym_float
     sym_int
     sym_max
     sym_min
+    sym_not
 
 Optimizations
 -------------

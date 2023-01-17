@@ -20,6 +20,7 @@ import warnings
 import unittest
 import torch.nn.utils._stateless as _stateless
 from math import sqrt
+from functorch.experimental import control_flow
 from torch.multiprocessing import Process
 from torch.testing import FileCheck
 from torch.testing._internal.common_methods_invocations import op_db
@@ -312,6 +313,18 @@ class TestFX(JitTestCase):
         inp = torch.randn(3)
         self.assertEqual(mod(inp), rmatmul_f(inp))
 
+    def test_control_flow_tracing(self):
+        def true(x, y):
+            return x + y
+
+        def false(x, y):
+            return x - y
+
+        def f(x, y):
+            x = control_flow.cond(x[0] == 0, true, false, [x, y])
+
+        with self.assertRaisesRegex(RuntimeError, "Unable to symbolically trace PyOperators"):
+            _ = symbolic_trace(f)
 
     def test_disallow_override(self):
         # Custom delegate to disallow in-place tensor operations

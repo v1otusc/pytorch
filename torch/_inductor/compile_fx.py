@@ -22,6 +22,7 @@ from .utils import (
     dynamo_optimizations,
     dynamo_utils,
     has_incompatible_cudagraph_ops,
+    get_dtype_size,
 )
 from .virtualized import V
 
@@ -186,10 +187,12 @@ def clone_preserve_strides(x):
 
 
 def align_inputs(model, inputs, static_input_idxs=()):
+    def is_aligned(storage_offset, dtype):
+        return (storage_offset * get_dtype_size(dtype)) % ALIGNMENT == 0
     check_inputs = [
         i
         for i in range(len(inputs))
-        if (i not in static_input_idxs or (inputs[i].data_ptr() % ALIGNMENT) != 0)
+        if (i not in static_input_idxs or not is_aligned(inputs[i].storage_offset(), inputs[i].dtype))
         and inputs[i].device.type == "cuda"
     ]
 

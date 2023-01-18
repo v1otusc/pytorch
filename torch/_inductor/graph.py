@@ -368,11 +368,16 @@ class GraphLowering(torch.fx.Interpreter):
                 result = super().run_node(n)
 
             # require the same stride order for dense outputs,
-            # so that user-land view() will not throw because inductor
+            # 1. user-land view() will not throw because inductor
             # output different strides than eager
             # long term the solution is to make view() always succeed
             # with infallible strides.
-            if any(user.op == "output" for user in n.users):
+            # 2: as_strided op, we need make sure its input has same size/stride with
+            # eager model to align with eager behavior.
+            if any(
+                user.op == "output" or user.target == torch.ops.aten.as_strided.default
+                for user in n.users
+            ):
                 strides = n.meta["val"].stride()
                 dense = torch._prims_common.is_non_overlapping_and_dense(n.meta["val"])
                 # requiring a stride order for a non-dense output wouldn't
